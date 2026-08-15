@@ -681,7 +681,36 @@ end
     @trixi_test_nowarn Plots.plot(initial_condition_t_end, semi)
     @trixi_test_nowarn Plots.plot((x, equations) -> x, semi)
 end
-@testitem "Visualization: PlotData2D (DGMulti 3D Tet slice" setup=[
+@testitem "Visualization: tetrahedron-plane intersection" tags=[
+    :misc_part1,
+    :dgmulti_slice_geometry
+] begin
+    # Component-wise coordinates of the four tetrahedron vertices.
+    triangle_vertices = (SVector(0.0, 1.0, 0.0, 0.0),
+                         SVector(0.0, 0.0, 1.0, 0.0),
+                         SVector(0.0, 0.0, 0.0, 1.0))
+    triangle = Trixi.intersect_tetrahedron_with_plane(triangle_vertices, 3, 0.25)
+
+    @test length(triangle) == 3
+    @test all(barycentric -> sum(barycentric) ≈ 1.0, triangle)
+    @test all(barycentric -> all(barycentric .>= 0.0), triangle)
+    @test all(barycentric -> sum(barycentric .* triangle_vertices[3]) ≈ 0.25, triangle)
+
+    quad_vertices = (SVector(0.0, 1.0, 0.0, 0.0),
+                     SVector(0.0, 0.0, 1.0, 0.0),
+                     SVector(-1.0, -1.0, 1.0, 1.0))
+    quadrilateral = Trixi.intersect_tetrahedron_with_plane(quad_vertices, 3, 0.0)
+
+    @test length(quadrilateral) == 4
+    @test all(barycentric -> sum(barycentric) ≈ 1.0, quadrilateral)
+    @test all(barycentric -> sum(barycentric .* quad_vertices[3]) ≈ 0.0, quadrilateral)
+
+    # An outside plane and a plane merely touching one vertex have no 2D intersection.
+    @test isempty(Trixi.intersect_tetrahedron_with_plane(triangle_vertices, 3, 2.0))
+    @test isempty(Trixi.intersect_tetrahedron_with_plane(triangle_vertices, 3, 1.0))
+end
+
+@testitem "Visualization: PlotData2D (DGMulti 3D Tet slice)" setup=[
     Setup,
     Visualization
 ] tags=[:misc_part1, :dgmulti_3d_visualization] begin
@@ -691,17 +720,17 @@ end
                         tspan=(0.0, 0.0))
 
     pd = PlotData2D(sol;
-                    slice=:xy,
+                    slice = :xy,
                     point = (0.0, 0.0, 0.125),
-                    solution_variables=cons2cons)
+                    solution_variables = cons2cons)
 
     @test pd isa Trixi.PlotData2DTriangulated
     @test !isempty(pd.x)
     @test size(pd.x) == size(pd.y)
     @test size(pd.x) == size(pd.data)
     @test size(pd.t, 1) > 0
-    @test all(isinfinite, pd.x)
-    @test all(isinfinite, pd.y)
+    @test all(isfinite, pd.x)
+    @test all(isfinite, pd.y)
 end
 
 @testitem "Visualization: PlotData2D (DGMulti Tri SBP)" setup=[Setup, Visualization] tags=[:misc_part1] begin
