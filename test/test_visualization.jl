@@ -681,6 +681,29 @@ end
     @trixi_test_nowarn Plots.plot(initial_condition_t_end, semi)
     @trixi_test_nowarn Plots.plot((x, equations) -> x, semi)
 end
+@testitem "Visualization: PlotData2D (DGMulti 3D Tet slice" setup=[
+    Setup,
+    Visualization
+] tags=[:misc_part1, :dgmulti_3d_visualization] begin
+    @test_trixi_include(joinpath(EXAMPLES_DIR, "dgmulti_3d",
+                                 "elixir_euler_weakform_periodic.jl"),
+                        cells_per_dimension=(2, 2, 2),
+                        tspan=(0.0, 0.0))
+
+    pd = PlotData2D(sol;
+                    slice=:xy,
+                    point = (0.0, 0.0, 0.125),
+                    solution_variables=cons2cons)
+
+    @test pd isa Trixi.PlotData2DTriangulated
+    @test !isempty(pd.x)
+    @test size(pd.x) == size(pd.y)
+    @test size(pd.x) == size(pd.data)
+    @test size(pd.t, 1) > 0
+    @test all(isinfinite, pd.x)
+    @test all(isinfinite, pd.y)
+end
+
 @testitem "Visualization: PlotData2D (DGMulti Tri SBP)" setup=[Setup, Visualization] tags=[:misc_part1] begin
 
     # Regression test for plotting with SBP on triangular elements (reference triangulation of rstp).
