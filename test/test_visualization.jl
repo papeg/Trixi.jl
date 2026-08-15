@@ -714,15 +714,22 @@ end
     Setup,
     Visualization
 ] tags=[:misc_part1, :dgmulti_3d_visualization] begin
+    function initial_condition_linear(x, t, equations)
+        rho = 10 + x[1] + 2 * x[2] + 3 * x[3]
+        return SVector(rho, 0.1, -0.2, 0.7, 20.0)
+    end
+
     @test_trixi_include(joinpath(EXAMPLES_DIR, "dgmulti_3d",
                                  "elixir_euler_weakform_periodic.jl"),
                         cells_per_dimension=(2, 2, 2),
-                        tspan=(0.0, 0.0))
+                        tspan=(0.0, 0.0),
+                        initial_condition=initial_condition_linear,
+                        source_terms=nothing)
 
-    pd = PlotData2D(sol;
-                    slice = :xy,
-                    point = (0.0, 0.0, 0.125),
-                    solution_variables = cons2cons)
+    pd = @inferred PlotData2D(sol;
+                              slice = :xy,
+                              point = (0.0, 0.0, 0.125),
+                              solution_variables = cons2cons)
 
     @test pd isa Trixi.PlotData2DTriangulated
     @test !isempty(pd.x)
@@ -731,6 +738,36 @@ end
     @test size(pd.t, 1) > 0
     @test all(isfinite, pd.x)
     @test all(isfinite, pd.y)
+    @test all(state -> all(isfinite, state), pd.data)
+
+    @test all(pd.data[index] ≈
+              initial_condition_linear(SVector(pd.x[index], pd.y[index], 0.125), 0.0,
+                                       equations)
+              for index in eachindex(pd.data))
+
+    function total_slice_area(plot_data)
+        return sum(zip(eachcol(plot_data.x_face), eachcol(plot_data.y_face))) do (x, y)
+            finite = isfinite.(x) .& isfinite.(y)
+            x_polygon = x[finite]
+            y_polygon = y[finite]
+            return 0.5 * abs(sum(x_polygon[index] * y_polygon[index + 1] -
+                           x_polygon[index + 1] * y_polygon[index]
+                           for index in 1:(length(x_polygon) - 1)))
+        end
+    end
+
+    # Exercise the half-open ownership convention on an interior mesh plane and the upper boundary.
+    # In both cases the polygons must cover the [-1, 1]^2 cross-section exactly once.
+    pd_interior = PlotData2D(sol; point = (0.0, 0.0, 0.0))
+    pd_upper_boundary = PlotData2D(sol; point = (0.0, 0.0, 1.0))
+    @test total_slice_area(pd_interior) ≈ 4.0
+    @test total_slice_area(pd_upper_boundary) ≈ 4.0
+
+    @test_throws ArgumentError PlotData2D(sol; slice = :xz)
+    @test_throws ErrorException PlotData2D(sol; point = (0.0, 0.0, 2.0))
+
+    @trixi_test_nowarn Plots.plot(pd["rho"])
+    @trixi_test_nowarn Makie.plot(pd["rho"], plot_mesh = true)
 end
 
 @testitem "Visualization: PlotData2D (DGMulti Tri SBP)" setup=[Setup, Visualization] tags=[:misc_part1] begin
