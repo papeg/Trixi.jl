@@ -818,17 +818,149 @@ function PlotData2D(u::StructArray,
                     slice = :xy,
                     point = (0.0, 0.0, 0.0))
     orientation_x, orientation_y = _get_orientations(mesh, slice)
-
     if orientation_x == 0
         error("illegal dimension '$slice', supported dimensions are :yz, :xz, and :xy")
+    end
+    if slice !== :xy
+        throw(ArgumentError("PlotData2DTriangulated currently supports only `slice = :xy` for three-dimensional DGMulti meshes."))
     end
 
     @assert length(point)>=3 "Point must be three-dimensional."
 
     slice_dimension = 6 - orientation_x - orientation_y
-    slice_coordinate = point[slice_dimension]
+    RealT = real(dg)
+    slice_coordinate = convert(RealT, point[slice_dimension])
 
-    error("Reached 3D DGMulti tetrahedral slicing at coordinate '$slice_coordinate'")
+    rd = dg.basis
+    md = mesh.md
+    global_vertex_coordinates = (md.VX, md.VY, md.VZ)
+    element_to_vertex = md.EToV
+
+    function element_vertex_coordinates(element)
+        return ntuple(3) do dimension
+            SVector{4, RealT}(ntuple(4) do local_vertex
+                                  vertex = element_to_vertex[element, local_vertex]
+                                  global_vertex_coordinates[dimension][vertex]
+                              end)
+        end
+    end
+
+    # Use the same half-open convention as TreeMesh slicing. Thus, a plane coinciding with an
+    # interior face is owned by only one of its two neighboring tetrahedra.
+    lower_limit, upper_limit = extrema(global_vertex_coordinates[slice_dimension])
+    scale = max(one(RealT), abs(slice_coordinate), abs(lower_limit), abs(upper_limit))
+    tolerance = 100 * eps(RealT) * scale
+    if slice_coordinate < lower_limit - tolerance ||
+       slice_coordinate > upper_limit + tolerance
+        error("Slice plane at coordinate $slice_coordinate is outside of the mesh bounds [$lower_limit, $upper_limit].")
+    end
+
+    intersection_polygons = Tuple{Int, Vector{SVector{4, RealT}}}[]
+    sizehint!(intersection_polygons, md.num_elements)
+    at_upper_boundary = abs(slice_coordinate - upper_limit) <= tolerance
+    for element in eachelement(mesh, dg, cache)
+        vertex_coordinates = element_vertex_coordinates(element)
+        minimum_coordinate, maximum_coordinate = extrema(vertex_coordinates[slice_dimension])
+        intersects_half_open = (minimum_coordinate <= slice_coordinate + tolerance &&
+                                slice_coordinate < maximum_coordinate - tolerance)
+        intersects_upper_boundary = (at_upper_boundary &&
+                                     abs(maximum_coordinate - upper_limit) <= tolerance)
+        if !intersects_half_open && !intersects_upper_boundary
+            continue
+        end
+
+        polygon = intersect_tetrahedron_with_plane(vertex_coordinates, slice_dimension,
+                                                   slice_coordinate)
+        if !isempty(polygon)
+            push!(intersection_polygons, (element, polygon))
+        end
+    end
+
+    isempty(intersection_polygons) &&
+        error("Slice plane at coordinate $slice_coordinate does not intersect the mesh.")
+
+    # Every triangular intersection becomes one plotting element. A quadrilateral is split into
+    # two triangles. Keeping one tetrahedron per plotting element preserves DG discontinuities.
+    num_slice_elements = sum(length(polygon) - 2
+                             for (_, polygon) in intersection_polygons)
+    r_plot, s_plot = StartUpDG.equi_nodes(Tri(), rd.Nplot)
+    r_vertices, s_vertices = StartUpDG.nodes(Tri(), 1)
+    triangle_vertex_interpolation = (StartUpDG.vandermonde(Tri(), 1, r_plot, s_plot) /
+                                     StartUpDG.vandermonde(Tri(), 1, r_vertices,
+                                                           s_vertices))
+    num_plotting_points = length(r_plot)
+
+    x_plot = zeros(RealT, num_plotting_points, num_slice_elements)
+    y_plot = similar(x_plot)
+
+    nvars = nvariables(equations)
+    uEltype = eltype(first(u))
+    u_plot = StructArray{SVector{nvars, uEltype}}(ntuple(_ -> zeros(uEltype,
+                                                                    num_plotting_points,
+                                                                    num_slice_elements),
+                                                         nvars))
+
+    reference_vertex_coordinates = map(coordinates -> SVector{4, RealT}(coordinates),
+                                       StartUpDG.nodes(Tet(), 1))
+    reference_coordinates = ntuple(_ -> Vector{RealT}(undef, num_plotting_points), 3)
+    vandermonde_factorization = LinearAlgebra.factorize(rd.VDM)
+    solution_variables_ = digest_solution_variables(equations, solution_variables)
+
+    slice_element = 0
+    for (element, polygon) in intersection_polygons
+        vertex_coordinates = element_vertex_coordinates(element)
+        for last_vertex in 3:length(polygon)
+            slice_element += 1
+            triangle = (1, last_vertex - 1, last_vertex)
+            function patch_coordinates(coordinates)
+                SVector{3, RealT}(ntuple(local_vertex -> dot(polygon[triangle[local_vertex]],
+                                                             coordinates),
+                                         3))
+            end
+
+            mul!(view(x_plot, :, slice_element), triangle_vertex_interpolation,
+                 patch_coordinates(vertex_coordinates[orientation_x]))
+            mul!(view(y_plot, :, slice_element), triangle_vertex_interpolation,
+                 patch_coordinates(vertex_coordinates[orientation_y]))
+            for dimension in 1:3
+                mul!(reference_coordinates[dimension], triangle_vertex_interpolation,
+                     patch_coordinates(reference_vertex_coordinates[dimension]))
+            end
+
+            interpolation_matrix = StartUpDG.vandermonde(Tet(), rd.N,
+                                                         reference_coordinates...) /
+                                   vandermonde_factorization
+            StructArrays.foreachfield((output, input) -> mul!(output,
+                                                              interpolation_matrix,
+                                                              input),
+                                      view(u_plot, :, slice_element),
+                                      view(u, :, element))
+            transform_to_solution_variables!(view(u_plot, :, slice_element),
+                                             solution_variables_, equations)
+        end
+    end
+
+    # Store one closed polyline per intersected tetrahedron. The fifth entry is NaN for triangular
+    # intersections and the closing vertex for quadrilateral intersections.
+    x_face = fill(RealT(NaN), 5, length(intersection_polygons))
+    y_face = similar(x_face)
+    for (polygon_id, (element, polygon)) in enumerate(intersection_polygons)
+        vertex_coordinates = element_vertex_coordinates(element)
+        for vertex in eachindex(polygon)
+            x_face[vertex, polygon_id] = dot(polygon[vertex],
+                                             vertex_coordinates[orientation_x])
+            y_face[vertex, polygon_id] = dot(polygon[vertex],
+                                             vertex_coordinates[orientation_y])
+        end
+        x_face[length(polygon) + 1, polygon_id] = x_face[1, polygon_id]
+        y_face[length(polygon) + 1, polygon_id] = y_face[1, polygon_id]
+    end
+
+    triangulation = reference_plotting_triangulation((r_plot, s_plot))
+    variable_names = SVector(varnames(solution_variables_, equations))
+
+    return PlotData2DTriangulated(x_plot, y_plot, u_plot, triangulation,
+                                  x_face, y_face, nothing, variable_names)
 end
 
 PlotData2D(u::VectorOfArray, mesh, equations, dg::DGMulti{3}, cache; kwargs...) = PlotData2D(parent(u),
