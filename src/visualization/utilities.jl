@@ -588,6 +588,64 @@ function cell2node(cell_centered_data)
     return node_centered_data
 end
 
+# Intersect an affine tetrahedron with an axis-aligned plane. The vertex coordinates are stored
+# component-wise as `(x, y, z)`. Return the intersection polygon as cyclically ordered
+# barycentric coordinates with respect to the four tetrahedron vertices.
+function intersect_tetrahedron_with_plane(vertex_coordinates::NTuple{3,
+                                                                     SVector{4, RealT}},
+                                          slice_dimension,
+                                          slice_coordinate) where {RealT <: Real}
+    plane_coordinates = vertex_coordinates[slice_dimension]
+    slice_coordinate_ = convert(RealT, slice_coordinate)
+    distances = plane_coordinates .- slice_coordinate_
+
+    scale = max(one(RealT), abs(slice_coordinate_), maximum(abs, plane_coordinates))
+    tolerance = 100 * eps(RealT) * scale
+
+    barycentric_vertices = SMatrix{4, 4, RealT}(I)
+    intersections = sizehint!(SVector{4, RealT}[], 4)
+
+    # Add vertices lying on the plane once. Strict crossings below cannot duplicate them.
+    for vertex in 1:4
+        if abs(distances[vertex]) <= tolerance
+            push!(intersections, barycentric_vertices[:, vertex])
+        end
+    end
+
+    edges = ((1, 2), (1, 3), (1, 4), (2, 3), (2, 4), (3, 4))
+    for (left, right) in edges
+        distance_left = distances[left]
+        distance_right = distances[right]
+        if abs(distance_left) > tolerance && abs(distance_right) > tolerance &&
+           signbit(distance_left) != signbit(distance_right)
+            fraction = distance_left / (distance_left - distance_right)
+            push!(intersections,
+                  (one(RealT) - fraction) * barycentric_vertices[:, left] +
+                  fraction * barycentric_vertices[:, right])
+        end
+    end
+
+    # Touching only a vertex or edge does not produce a two-dimensional polygon.
+    if length(intersections) < 3
+        empty!(intersections)
+        return intersections
+    end
+
+    # Sort cyclically in the two plotted physical coordinate directions. This is required to
+    # split a quadrilateral into triangles without introducing crossing edges.
+    orientation_x = slice_dimension == 1 ? 2 : 1
+    orientation_y = slice_dimension == 3 ? 2 : 3
+    centroid = sum(intersections) / length(intersections)
+    sort!(intersections;
+          by = barycentric_coordinates -> begin
+              offset = barycentric_coordinates - centroid
+              atan(dot(offset, vertex_coordinates[orientation_y]),
+                   dot(offset, vertex_coordinates[orientation_x]))
+          end)
+
+    return intersections
+end
+
 # Convert 3d unstructured data to 2d data.
 # Additional to the new unstructured data updated coordinates, levels and
 # center coordinates are returned.

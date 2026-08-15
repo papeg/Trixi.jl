@@ -808,6 +808,29 @@ PlotData2D(u::VectorOfArray, mesh, equations, dg::DGMulti{2}, cache; kwargs...) 
                                                                                              cache;
                                                                                              kwargs...)
 
+function PlotData2D(u::StructArray,
+                    mesh::DGMultiMesh{3, Affine},
+                    equations,
+                    dg::DGMulti{3, Tet},
+                    cache;
+                    solution_variables = nothing,
+                    nvisnodes = 2 * nnodes(dg),
+                    slice = :xy,
+                    point = (0.0, 0.0, 0.0))
+    orientation_x, orientation_y = _get_orientations(mesh, slice)
+
+    if orientation_x == 0
+        error("illegal dimension '$slice', supported dimensions are :yz, :xz, and :xy")
+    end
+
+    @assert length(point)>=3 "Point must be three-dimensional."
+
+    slice_dimension = 6 - orientation_x - orientation_y
+    slice_coordinate = point[slice_dimension]
+
+    error("Reached 3D DGMulti tetrahedral slicing at coordinate '$slice_coordinate'")
+end
+
 PlotData2D(u::VectorOfArray, mesh, equations, dg::DGMulti{3}, cache; kwargs...) = PlotData2D(parent(u),
                                                                                              mesh,
                                                                                              equations,
