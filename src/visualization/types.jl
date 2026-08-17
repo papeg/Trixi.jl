@@ -849,7 +849,6 @@ function PlotData2D(u::StructArray,
     end
 
     intersection_polygons = Tuple{Int, Vector{SVector{4, RealT}}}[]
-    sizehint!(intersection_polygons, md.num_elements)
     at_upper_boundary = abs(slice_coordinate - upper_limit) <= tolerance
     for element in eachelement(mesh, dg, cache)
         vertex_coordinates = element_vertex_coordinates(element)
