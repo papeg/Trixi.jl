@@ -955,12 +955,9 @@ function PlotData2D(u::StructArray,
                                   x_face, y_face, nothing, variable_names)
 end
 
-PlotData2D(u::VectorOfArray, mesh, equations, dg::DGMulti{3}, cache; kwargs...) = PlotData2D(parent(u),
-                                                                                             mesh,
-                                                                                             equations,
-                                                                                             dg,
-                                                                                             cache;
-                                                                                             kwargs...)
+PlotData2D(u::VectorOfArray, mesh::DGMultiMesh{3, Affine}, equations,
+           dg::DGMulti{3, Tet}, cache; kwargs...) = PlotData2D(parent(u), mesh, equations,
+                                                              dg, cache; kwargs...)
 function PlotData1D(u, mesh, equations, solver, cache;
                     solution_variables = nothing, nvisnodes = nothing,
                     reinterpolate = default_reinterpolate(solver),
