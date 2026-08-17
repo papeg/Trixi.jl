@@ -813,13 +813,10 @@ function PlotData2D(u::StructArray,
                     nvisnodes = 2 * nnodes(dg),
                     slice = :xy,
                     point = (0.0, 0.0, 0.0))
-    orientation_x, orientation_y = _get_orientations(mesh, slice)
-    if orientation_x == 0
-        error("illegal dimension '$slice', supported dimensions are :yz, :xz, and :xy")
-    end
     if slice !== :xy
-        throw(ArgumentError("PlotData2DTriangulated currently supports only `slice = :xy` for three-dimensional DGMulti meshes."))
+        throw(ArgumentError("PlotData2DTriangulated supports only `slice = :xy` for three-dimensional DGMulti meshes, got `slice = $slice`."))
     end
+    orientation_x, orientation_y = _get_orientations(mesh, slice)
 
     @assert length(point)>=3 "Point must be three-dimensional."
 
