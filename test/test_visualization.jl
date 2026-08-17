@@ -696,6 +696,19 @@ end
     @test all(barycentric -> all(barycentric .>= 0.0), triangle)
     @test all(barycentric -> sum(barycentric .* triangle_vertices[3]) ≈ 0.25, triangle)
 
+    # The geometry helper supports planes normal to all three coordinate directions, even though
+    # the public DGMulti slice constructor currently supports only `slice = :xy`.
+    for slice_dimension in (1, 2)
+        intersection = Trixi.intersect_tetrahedron_with_plane(triangle_vertices,
+                                                              slice_dimension, 0.25)
+        @test length(intersection) == 3
+        @test all(barycentric -> sum(barycentric) ≈ 1.0, intersection)
+        @test all(barycentric -> all(barycentric .>= 0.0), intersection)
+        @test all(barycentric ->
+                  sum(barycentric .* triangle_vertices[slice_dimension]) ≈ 0.25,
+                  intersection)
+    end
+
     quad_vertices = (SVector(0.0, 1.0, 0.0, 0.0),
                      SVector(0.0, 0.0, 1.0, 0.0),
                      SVector(-1.0, -1.0, 1.0, 1.0))
