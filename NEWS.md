@@ -25,6 +25,9 @@ for human readability.
   can now be chosen via the new keyword argument `flux_differencing_kernel` of
   `semidiscretize`, either `HalfSweep()` (default), `FullSweep()`, or
   `FullSweepGlobal` ([#3206]).
+- `PlotData2D` can now slice three-dimensional `DGMultiMesh` solutions on affine
+  tetrahedral elements ([#XXXX]). The `slice` and `point` keyword arguments behave as
+  for `TreeMesh`, and the result is a `PlotData2DTriangulated` object.
 
 #### Changed
 - The diffusive eigenvalue estimate (`max_diffusivity`) for the Navier-Stokes equations has changed ([#3192]).
