@@ -681,32 +681,21 @@ end
     @trixi_test_nowarn Plots.plot(initial_condition_t_end, semi)
     @trixi_test_nowarn Plots.plot((x, equations) -> x, semi)
 end
-@testitem "Visualization: tetrahedron-plane intersection" tags=[
-    :misc_part1,
-    :dgmulti_slice_geometry
-] begin
+@testitem "Visualization: tetrahedron-plane intersection" tags=[:misc_part1] begin
     # Component-wise coordinates of the four tetrahedron vertices.
     triangle_vertices = (SVector(0.0, 1.0, 0.0, 0.0),
                          SVector(0.0, 0.0, 1.0, 0.0),
                          SVector(0.0, 0.0, 0.0, 1.0))
-    triangle = Trixi.intersect_tetrahedron_with_plane(triangle_vertices, 3, 0.25)
 
-    @test length(triangle) == 3
-    @test all(barycentric -> sum(barycentric) ≈ 1.0, triangle)
-    @test all(barycentric -> all(barycentric .>= 0.0), triangle)
-    @test all(barycentric -> sum(barycentric .* triangle_vertices[3]) ≈ 0.25, triangle)
-
-    # The geometry helper supports planes normal to all three coordinate directions, even though
-    # the public DGMulti slice constructor currently supports only `slice = :xy`.
-    for slice_dimension in (1, 2)
-        intersection = Trixi.intersect_tetrahedron_with_plane(triangle_vertices,
-                                                              slice_dimension, 0.25)
-        @test length(intersection) == 3
-        @test all(barycentric -> sum(barycentric) ≈ 1.0, intersection)
-        @test all(barycentric -> all(barycentric .>= 0.0), intersection)
-        @test all(barycentric ->
-                  sum(barycentric .* triangle_vertices[slice_dimension]) ≈ 0.25,
-                  intersection)
+    for slice_dimension in 1:3
+        triangle = Trixi.intersect_tetrahedron_with_plane(triangle_vertices,
+                                                          slice_dimension, 0.25)
+        @test length(triangle) == 3
+        @test all(barycentric -> sum(barycentric) ≈ 1.0, triangle)
+        @test all(barycentric -> all(barycentric .>= 0.0), triangle)
+        @test all(barycentric -> sum(barycentric .*
+                                     triangle_vertices[slice_dimension]) ≈ 0.25,
+                  triangle)
     end
 
     quad_vertices = (SVector(0.0, 1.0, 0.0, 0.0),
@@ -726,7 +715,7 @@ end
 @testitem "Visualization: PlotData2D (DGMulti 3D Tet slice)" setup=[
     Setup,
     Visualization
-] tags=[:misc_part1, :dgmulti_3d_visualization] begin
+] tags=[:misc_part1] begin
     function initial_condition_linear(x, t, equations)
         rho = 10 + x[1] + 2 * x[2] + 3 * x[3]
         return SVector(rho, 0.1, -0.2, 0.7, 20.0)
@@ -753,11 +742,6 @@ end
     @test all(isfinite, pd.y)
     @test all(state -> all(isfinite, state), pd.data)
 
-    @test all(pd.data[index] ≈
-              initial_condition_linear(SVector(pd.x[index], pd.y[index], 0.125), 0.0,
-                                       equations)
-              for index in eachindex(pd.data))
-
     # The explicit triangulated constructor must forward the slice keywords to PlotData2D.
     pd_triangulated = @inferred Trixi.PlotData2DTriangulated(sol;
                                                             slice = :xy,
@@ -778,14 +762,32 @@ end
         end
     end
 
-    # Exercise the half-open ownership convention on an interior mesh plane and the upper boundary.
-    # In both cases the polygons must cover the [-1, 1]^2 cross-section exactly once.
-    pd_interior = PlotData2D(sol; point = (0.0, 0.0, 0.0))
-    pd_upper_boundary = PlotData2D(sol; point = (0.0, 0.0, 1.0))
-    @test total_slice_area(pd_interior) ≈ 4.0
-    @test total_slice_area(pd_upper_boundary) ≈ 4.0
+    function slice_point(slice_dimension, x, y, coordinate)
+        slice_dimension == 1 && return SVector(coordinate, x, y)
+        slice_dimension == 2 && return SVector(x, coordinate, y)
+        return SVector(x, y, coordinate)
+    end
 
-    @test_throws ArgumentError PlotData2D(sol; slice = :xz)
+    # Exercise the half-open ownership convention for every slice orientation on both domain
+    # boundaries, an interior mesh plane, and a plane cutting through the elements. The polygons
+    # must cover the [-1, 1]^2 cross-section exactly once in each case. `initial_condition_linear`
+    # is affine and thus represented exactly, so the sliced values must match it pointwise.
+    for (slice, slice_dimension) in ((:yz, 1), (:xz, 2), (:xy, 3)),
+        coordinate in (-1.0, 0.0, 0.125, 1.0)
+
+        pd_slice = PlotData2D(sol; slice = slice,
+                              point = ntuple(dimension -> dimension == slice_dimension ?
+                                                          coordinate : 0.0, 3),
+                              solution_variables = cons2cons)
+        @test total_slice_area(pd_slice) ≈ 4.0
+        @test all(pd_slice.data[index] ≈
+                  initial_condition_linear(slice_point(slice_dimension, pd_slice.x[index],
+                                                       pd_slice.y[index], coordinate),
+                                           0.0, equations)
+                  for index in eachindex(pd_slice.data))
+    end
+
+    @test_throws ErrorException PlotData2D(sol; slice = :yx)
     @test_throws ErrorException PlotData2D(sol; point = (0.0, 0.0, 2.0))
 
     @trixi_test_nowarn Plots.plot(pd["rho"])
