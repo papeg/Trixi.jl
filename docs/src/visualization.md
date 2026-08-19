@@ -246,12 +246,10 @@ appropriate keyword arguments:
   such that it lies on the point (default: `(0.0, 0.0, 0.0)`).
 All other attributes for [`PlotData2D`](@ref) objects apply here as well.
 
-Three-dimensional [`DGMultiMesh`](@ref) solutions can also be sliced when using
-affine tetrahedral elements. Currently, only `slice = :xy` is supported for these
-meshes; `point[3]` selects the ``z`` coordinate of the slice. The result is a
-[`PlotData2DTriangulated`](@ref), which can be plotted with Plots.jl or as a Makie
-heatmap. Curved meshes, non-tetrahedral elements, and the `:xz` and `:yz` slice
-orientations are not yet supported by this method.
+The same `slice` and `point` keyword arguments slice three-dimensional
+[`DGMultiMesh`](@ref) solutions on affine tetrahedral elements. The result can be
+plotted with Plots.jl or as a Makie heatmap. Curved meshes and non-tetrahedral
+elements are not yet supported by this method.
 
 For example, to plot the velocity field orthogonal to the yz-plane at different
 x-axis locations, you can execute
