@@ -779,6 +779,8 @@ end
                               point = ntuple(dimension -> dimension == slice_dimension ?
                                                           coordinate : 0.0, 3),
                               solution_variables = cons2cons)
+        @test (pd_slice.orientation_x, pd_slice.orientation_y) ==
+              Tuple(dimension for dimension in 1:3 if dimension != slice_dimension)
         @test total_slice_area(pd_slice) ≈ 4.0
         @test all(pd_slice.data[index] ≈
                   initial_condition_linear(slice_point(slice_dimension, pd_slice.x[index],
@@ -792,6 +794,35 @@ end
 
     @trixi_test_nowarn Plots.plot(pd["rho"])
     @trixi_test_nowarn Makie.plot(pd["rho"], plot_mesh = true)
+    @trixi_test_nowarn Trixi.iplot(pd)
+    @trixi_test_nowarn Trixi.iplot(sol)
+end
+
+@testitem "Visualization: PlotData2D (DGMulti 3D Tet slice, non-periodic)" setup=[
+    Setup,
+    Visualization
+] tags=[:misc_part1] begin
+    function initial_condition_linear(x, t, equations)
+        rho = 10 + x[1] + 2 * x[2] + 3 * x[3]
+        return SVector(rho, 0.1, -0.2, 0.7, 20.0)
+    end
+
+    @test_trixi_include(joinpath(EXAMPLES_DIR, "dgmulti_3d", "elixir_euler_weakform.jl"),
+                        cells_per_dimension=(2, 2, 2),
+                        tspan=(0.0, 0.0),
+                        initial_condition=initial_condition_linear,
+                        source_terms=nothing)
+
+    pd = PlotData2D(sol; slice = :xz, point = (0.0, 0.25, 0.0),
+                    solution_variables = cons2cons)
+
+    @test pd isa Trixi.PlotData2DTriangulated
+    @test all(pd.data[index] ≈
+              initial_condition_linear(SVector(pd.x[index], 0.25, pd.y[index]), 0.0,
+                                       equations)
+              for index in eachindex(pd.data))
+
+    @trixi_test_nowarn Plots.plot(pd["rho"])
 end
 
 @testitem "Visualization: PlotData2D (DGMulti Tri SBP)" setup=[Setup, Visualization] tags=[:misc_part1] begin
@@ -806,6 +837,7 @@ end
 
     pd = PlotData2D(sol)
     @test pd isa Trixi.PlotData2DTriangulated
+    @test (pd.orientation_x, pd.orientation_y) == (1, 2)
     @test size(pd.t, 1) > 0
 
     @trixi_test_nowarn Plots.plot(pd)
