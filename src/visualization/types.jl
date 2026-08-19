@@ -97,6 +97,8 @@ struct PlotData2DTriangulated{DataType, NodeType, FaceNodeType, FaceDataType,
     y_face::FaceNodeType
     face_data::FaceDataType
     variable_names::VariableNames
+    orientation_x::Int
+    orientation_y::Int
 end
 
 # Show only a truncated output for convenience (the full data does not make sense)
@@ -372,7 +374,7 @@ function PlotData2D(u::StructArray, mesh, equations, dg::DGMulti, cache;
                                                         nvisnodes = nvisnodes)
 
     return PlotData2DTriangulated(x_plot, y_plot, u_plot, t, x_face, y_face, face_data,
-                                  variable_names)
+                                  variable_names, 1, 2)
 end
 
 # One can also call the `PlotData2DTriangulated` constructor directly for `DGMulti`
@@ -439,7 +441,8 @@ function PlotData2DTriangulated(u, mesh, equations, dg::DGSEM, cache;
     transform_to_solution_variables!(uplot, solution_variables_, equations)
     transform_to_solution_variables!(ufp, solution_variables_, equations)
 
-    return PlotData2DTriangulated(xplot, yplot, uplot, t, xfp, yfp, ufp, variable_names)
+    return PlotData2DTriangulated(xplot, yplot, uplot, t, xfp, yfp, ufp,
+                                  variable_names, 1, 2)
 end
 
 # Wrapper struct to indicate that an array represents a scalar data field. Used only for dispatch.
@@ -520,7 +523,7 @@ function ScalarPlotData2D(u, mesh, equations, dg::DGMulti, cache;
 
     # wrap solution in ScalarData struct for recipe dispatch
     return PlotData2DTriangulated(x_plot, y_plot, ScalarData(u_plot), t,
-                                  x_face, y_face, face_data, variable_name)
+                                  x_face, y_face, face_data, variable_name, 1, 2)
 end
 
 function ScalarPlotData2D(u, mesh, equations, dg::Union{<:DGSEM, <:FDSBP}, cache;
@@ -561,7 +564,7 @@ function ScalarPlotData2D(u, mesh, equations, dg::Union{<:DGSEM, <:FDSBP}, cache
 
     # wrap solution in ScalarData struct for recipe dispatch
     return PlotData2DTriangulated(x_plot, y_plot, ScalarData(u_plot), t,
-                                  x_face, y_face, face_data, variable_name)
+                                  x_face, y_face, face_data, variable_name, 1, 2)
 end
 
 """
@@ -787,7 +790,7 @@ function PlotData2DTriangulated(u, mesh, equations, dg::BlockFV, cache;
     x_face, y_face = calc_fv_grid_wireframe(corners_x, corners_y)
 
     return PlotData2DTriangulated(x, y, data, t, x_face, y_face, nothing,
-                                  variable_names)
+                                  variable_names, 1, 2)
 end
 
 # unwrap u if it is VectorOfArray
@@ -937,23 +940,40 @@ function PlotData2D(u::StructArray,
     # intersections and the closing vertex for quadrilateral intersections.
     x_face = fill(RealT(NaN), 5, length(intersection_polygons))
     y_face = similar(x_face)
+    face_data = StructArray{SVector{nvars, uEltype}}(ntuple(_ -> fill(uEltype(NaN), 5,
+                                                                      length(intersection_polygons)),
+                                                            nvars))
     for (polygon_id, (element, polygon)) in enumerate(intersection_polygons)
         vertex_coordinates = element_vertex_coordinates(element)
-        for vertex in eachindex(polygon)
+        num_vertices = length(polygon)
+        for vertex in 1:num_vertices
             x_face[vertex, polygon_id] = dot(polygon[vertex],
                                              vertex_coordinates[orientation_x])
             y_face[vertex, polygon_id] = dot(polygon[vertex],
                                              vertex_coordinates[orientation_y])
         end
-        x_face[length(polygon) + 1, polygon_id] = x_face[1, polygon_id]
-        y_face[length(polygon) + 1, polygon_id] = y_face[1, polygon_id]
+        x_face[num_vertices + 1, polygon_id] = x_face[1, polygon_id]
+        y_face[num_vertices + 1, polygon_id] = y_face[1, polygon_id]
+
+        corner_coordinates = ntuple(dimension -> [dot(polygon[vertex],
+                                                      reference_vertex_coordinates[dimension])
+                                                  for vertex in 1:num_vertices], 3)
+        interpolation_matrix = StartUpDG.vandermonde(Tet(), rd.N, corner_coordinates...) /
+                               vandermonde_factorization
+        corner_data = view(face_data, 1:num_vertices, polygon_id)
+        StructArrays.foreachfield((output, input) -> mul!(output, interpolation_matrix,
+                                                          input),
+                                  corner_data, view(u, :, element))
+        transform_to_solution_variables!(corner_data, solution_variables_, equations)
+        face_data[num_vertices + 1, polygon_id] = face_data[1, polygon_id]
     end
 
     triangulation = reference_plotting_triangulation((r_plot, s_plot))
     variable_names = SVector(varnames(solution_variables_, equations))
 
     return PlotData2DTriangulated(x_plot, y_plot, u_plot, triangulation,
-                                  x_face, y_face, nothing, variable_names)
+                                  x_face, y_face, face_data, variable_names,
+                                  orientation_x, orientation_y)
 end
 
 PlotData2D(u::VectorOfArray, mesh::DGMultiMesh{3, Affine}, equations,
