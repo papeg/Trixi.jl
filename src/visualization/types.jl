@@ -808,7 +808,7 @@ PlotData2D(u::VectorOfArray, mesh, equations, dg::DGMulti{2}, cache; kwargs...) 
                                                                                              kwargs...)
 
 function PlotData2D(u::StructArray,
-                    mesh::DGMultiMesh{3, Affine},
+                    mesh::DGMultiMesh{3, <:Affine},
                     equations,
                     dg::DGMulti{3, Tet},
                     cache;
@@ -958,7 +958,8 @@ function PlotData2D(u::StructArray,
         corner_coordinates = ntuple(dimension -> [dot(polygon[vertex],
                                                       reference_vertex_coordinates[dimension])
                                                   for vertex in 1:num_vertices], 3)
-        interpolation_matrix = StartUpDG.vandermonde(Tet(), rd.N, corner_coordinates...) /
+        interpolation_matrix = StartUpDG.vandermonde(Tet(), rd.N,
+                                                     corner_coordinates...) /
                                vandermonde_factorization
         corner_data = view(face_data, 1:num_vertices, polygon_id)
         StructArrays.foreachfield((output, input) -> mul!(output, interpolation_matrix,
@@ -976,9 +977,11 @@ function PlotData2D(u::StructArray,
                                   orientation_x, orientation_y)
 end
 
-PlotData2D(u::VectorOfArray, mesh::DGMultiMesh{3, Affine}, equations,
-           dg::DGMulti{3, Tet}, cache; kwargs...) = PlotData2D(parent(u), mesh, equations,
-                                                              dg, cache; kwargs...)
+function PlotData2D(u::VectorOfArray, mesh::DGMultiMesh{3, <:Affine}, equations,
+                    dg::DGMulti{3, Tet}, cache; kwargs...)
+    return PlotData2D(parent(u), mesh, equations, dg, cache; kwargs...)
+end
+
 function PlotData1D(u, mesh, equations, solver, cache;
                     solution_variables = nothing, nvisnodes = nothing,
                     reinterpolate = default_reinterpolate(solver),
