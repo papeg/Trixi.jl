@@ -246,11 +246,6 @@ appropriate keyword arguments:
   such that it lies on the point (default: `(0.0, 0.0, 0.0)`).
 All other attributes for [`PlotData2D`](@ref) objects apply here as well.
 
-The same `slice` and `point` keyword arguments slice three-dimensional
-[`DGMultiMesh`](@ref) solutions on affine tetrahedral elements. The result can be
-plotted with Plots.jl or as a Makie heatmap. Curved meshes and non-tetrahedral
-elements are not yet supported by this method.
-
 For example, to plot the velocity field orthogonal to the yz-plane at different
 x-axis locations, you can execute
 ```julia
@@ -270,6 +265,23 @@ julia> plot(plots..., layout=(2, 3), size=(750,350))
 which results in a 2x3 grid of slices of the `yz`-plane:
 
 ![plot-v1-0.0-to-0.5pi](https://user-images.githubusercontent.com/72009492/130953841-58df57b2-aa96-4130-9b70-30151856f68f.PNG)
+
+The same `slice` and `point` keyword arguments slice three-dimensional
+[`DGMultiMesh`](@ref) solutions on affine tetrahedral elements. Curved meshes and
+non-tetrahedral elements are not yet supported by this method. For example,
+```julia
+julia> trixi_include(joinpath(examples_dir(), "dgmulti_3d", "elixir_euler_weakform_periodic.jl"), tspan=(0.0, 0.1))
+[...]
+
+julia> pd = PlotData2D(sol, slice=:xz, point=(0.0, 0.5, 0.0))
+
+julia> plot(pd["rho"])
+
+julia> plot!(getmesh(pd))
+```
+slices the mesh at ``y = 0.5`` and overlays the outlines of the intersected
+tetrahedra. The resulting object is a `PlotData2DTriangulated`, which can also be
+passed to Makie as a heatmap or to `Trixi.iplot`.
 
 
 ### Creating a 1D plot
