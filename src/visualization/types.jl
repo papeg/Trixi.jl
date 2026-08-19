@@ -813,8 +813,8 @@ function PlotData2D(u::StructArray,
                     nvisnodes = 2 * nnodes(dg),
                     slice = :xy,
                     point = (0.0, 0.0, 0.0))
-    if slice !== :xy
-        throw(ArgumentError("PlotData2DTriangulated supports only `slice = :xy` for three-dimensional DGMulti meshes, got `slice = $slice`."))
+    if slice !== :yz && slice !== :xz && slice !== :xy
+        error("illegal dimension '$slice', supported dimensions are :yz, :xz, and :xy")
     end
     orientation_x, orientation_y = _get_orientations(mesh, slice)
 
@@ -845,7 +845,8 @@ function PlotData2D(u::StructArray,
     tolerance = 100 * eps(RealT) * scale
     if slice_coordinate < lower_limit - tolerance ||
        slice_coordinate > upper_limit + tolerance
-        error("Slice plane at coordinate $slice_coordinate is outside of the mesh bounds [$lower_limit, $upper_limit].")
+        error(string("Slice plane is outside of domain.",
+                     " point[$slice_dimension]=$slice_coordinate must be between $lower_limit and $upper_limit"))
     end
 
     intersection_polygons = Tuple{Int, Vector{SVector{4, RealT}}}[]
