@@ -744,9 +744,9 @@ end
 
     # The explicit triangulated constructor must forward the slice keywords to PlotData2D.
     pd_triangulated = @inferred Trixi.PlotData2DTriangulated(sol;
-                                                            slice = :xy,
-                                                            point = (0.0, 0.0, 0.125),
-                                                            solution_variables = cons2cons)
+                                                             slice = :xy,
+                                                             point = (0.0, 0.0, 0.125),
+                                                             solution_variables = cons2cons)
     @test pd_triangulated.x ≈ pd.x
     @test pd_triangulated.y ≈ pd.y
     @test pd_triangulated.data ≈ pd.data
