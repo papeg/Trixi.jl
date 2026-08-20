@@ -280,8 +280,14 @@ julia> plot(pd["rho"])
 julia> plot!(getmesh(pd))
 ```
 slices the mesh at ``y = 0.5`` and overlays the outlines of the intersected
-tetrahedra. The resulting object is a `PlotData2DTriangulated`, which can also be
-passed to Makie as a heatmap or to `Trixi.iplot`.
+tetrahedra. The same object can be visualized with Makie.jl, either as a heatmap of a
+single variable or as an interactive surface plot of all variables:
+```julia
+julia> Makie.plot(pd["rho"], plot_mesh=true)
+
+julia> iplot(pd)
+```
+Note that [`iplot`](@ref) takes the whole `pd`, not a single variable.
 
 
 ### Creating a 1D plot
