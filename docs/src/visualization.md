@@ -270,20 +270,24 @@ The same `slice` and `point` keyword arguments slice three-dimensional
 [`DGMultiMesh`](@ref) solutions on affine tetrahedral elements. Curved meshes and
 non-tetrahedral elements are not yet supported by this method. For example,
 ```julia
+julia> using Trixi, Plots
+
 julia> trixi_include(joinpath(examples_dir(), "dgmulti_3d", "elixir_euler_weakform_periodic.jl"), tspan=(0.0, 0.1))
 [...]
 
-julia> pd = PlotData2D(sol, slice=:xz, point=(0.0, 0.5, 0.0))
+julia> pd = PlotData2D(sol, slice = :xz, point = (0.0, 0.5, 0.0))
 
-julia> plot(pd["rho"])
+julia> Plots.plot(pd["rho"])
 
-julia> plot!(getmesh(pd))
+julia> Plots.plot!(getmesh(pd))
 ```
 slices the mesh at ``y = 0.5`` and overlays the outlines of the intersected
 tetrahedra. The same object can be visualized with Makie.jl, either as a heatmap of a
 single variable or as an interactive surface plot of all variables:
 ```julia
-julia> Makie.plot(pd["rho"], plot_mesh=true)
+julia> using GLMakie
+
+julia> Makie.plot(pd["rho"], plot_mesh = true)
 
 julia> iplot(pd)
 ```
