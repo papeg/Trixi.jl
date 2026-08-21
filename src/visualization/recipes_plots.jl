@@ -214,7 +214,7 @@ end
 RecipesBase.@recipe function f(pds::PlotDataSeries{<:PlotData2DTriangulated})
     pd = pds.plot_data
     @unpack variable_id = pds
-    @unpack x, y, data, t, variable_names, orientation_x, orientation_y = pd
+    @unpack x, y, data, t, variable_names = pd
 
     # extract specific solution field to plot
     data_field = zeros(eltype(first(data)), size(data))
@@ -227,8 +227,8 @@ RecipesBase.@recipe function f(pds::PlotDataSeries{<:PlotData2DTriangulated})
     title --> pd.variable_names[variable_id]
     xlims --> extrema(x)
     ylims --> extrema(y)
-    xguide --> _get_guide(orientation_x)
-    yguide --> _get_guide(orientation_y)
+    xguide --> _get_guide(1)
+    yguide --> _get_guide(2)
     seriestype --> :heatmap
     colorbar --> :true
 
@@ -264,7 +264,7 @@ end
 # Visualizes a single scalar field. Intended for use with ScalarPlotData2D.
 # Example usage: `plot(ScalarPlotData2D(u, semi))`.
 RecipesBase.@recipe function f(pd::PlotData2DTriangulated{<:ScalarData})
-    @unpack x, y, data, t, variable_names, orientation_x, orientation_y = pd
+    @unpack x, y, data, t, variable_names = pd
 
     title_string = isnothing(variable_names) ? "" : variable_names
 
@@ -273,8 +273,8 @@ RecipesBase.@recipe function f(pd::PlotData2DTriangulated{<:ScalarData})
     title --> title_string
     xlims --> extrema(x)
     ylims --> extrema(y)
-    xguide --> _get_guide(orientation_x)
-    yguide --> _get_guide(orientation_y)
+    xguide --> _get_guide(1)
+    yguide --> _get_guide(2)
     seriestype --> :heatmap
     colorbar --> :true
 

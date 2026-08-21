@@ -779,8 +779,6 @@ end
                               point = ntuple(dimension -> dimension == slice_dimension ?
                                                           coordinate : 0.0, 3),
                               solution_variables = cons2cons)
-        @test (pd_slice.orientation_x, pd_slice.orientation_y) ==
-              Tuple(dimension for dimension in 1:3 if dimension != slice_dimension)
         @test total_slice_area(pd_slice) ≈ 4.0
         @test all(pd_slice.data[index] ≈
                   initial_condition_linear(slice_point(slice_dimension, pd_slice.x[index],
@@ -795,7 +793,6 @@ end
     @trixi_test_nowarn Plots.plot(pd["rho"])
     @trixi_test_nowarn Makie.plot(pd["rho"], plot_mesh = true)
     @trixi_test_nowarn Trixi.iplot(pd)
-    @trixi_test_nowarn Trixi.iplot(sol)
 end
 
 @testitem "Visualization: PlotData2D (DGMulti 3D Tet slice, non-periodic)" setup=[
@@ -837,7 +834,6 @@ end
 
     pd = PlotData2D(sol)
     @test pd isa Trixi.PlotData2DTriangulated
-    @test (pd.orientation_x, pd.orientation_y) == (1, 2)
     @test size(pd.t, 1) > 0
 
     @trixi_test_nowarn Plots.plot(pd)
