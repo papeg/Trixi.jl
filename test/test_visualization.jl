@@ -822,6 +822,24 @@ end
     @trixi_test_nowarn Plots.plot(pd["rho"])
 end
 
+@testitem "Visualization: PlotData2D (DGMulti 3D unsupported)" setup=[
+    Setup,
+    Visualization
+] tags=[:misc_part1] begin
+    # Slicing needs the four vertices of an affine tetrahedron. Every other three-dimensional
+    # `DGMulti` configuration must say so instead of recursing into a stack overflow.
+    @test_trixi_include(joinpath(EXAMPLES_DIR, "dgmulti_3d",
+                                 "elixir_euler_weakform_periodic.jl"),
+                        cells_per_dimension=(2, 2, 2), tspan=(0.0, 0.0),
+                        element_type=Hex())
+    @test_throws ErrorException PlotData2D(sol)
+    @test_throws ErrorException PlotData2D(sol; slice = :xy, point = (0.0, 0.0, 0.0))
+
+    @test_trixi_include(joinpath(EXAMPLES_DIR, "dgmulti_3d", "elixir_euler_curved.jl"),
+                        cells_per_dimension=(2, 2, 2), tspan=(0.0, 0.0))
+    @test_throws ErrorException PlotData2D(sol)
+end
+
 @testitem "Visualization: PlotData2D (DGMulti Tri SBP)" setup=[Setup, Visualization] tags=[:misc_part1] begin
 
     # Regression test for plotting with SBP on triangular elements (reference triangulation of rstp).
