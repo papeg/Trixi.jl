@@ -978,6 +978,27 @@ function PlotData2D(u::VectorOfArray, mesh::DGMultiMesh{3, <:Affine}, equations,
     return PlotData2D(parent(u), mesh, equations, dg, cache; kwargs...)
 end
 
+# Without these, an unsupported three-dimensional `DGMulti` configuration bounces between the
+# generic `PlotData2D` and `PlotData2DTriangulated` methods until the stack overflows.
+function PlotData2D(u::StructArray, mesh::DGMultiMesh{3}, equations, dg::DGMulti{3},
+                    cache;
+                    kwargs...)
+    return throw_unsupported_dgmulti_3d(mesh, dg)
+end
+
+function PlotData2D(u::VectorOfArray, mesh::DGMultiMesh{3}, equations, dg::DGMulti{3},
+                    cache; kwargs...)
+    return throw_unsupported_dgmulti_3d(mesh, dg)
+end
+
+function throw_unsupported_dgmulti_3d(mesh::DGMultiMesh{3, MeshType},
+                                      dg::DGMulti{3}) where {MeshType}
+    return error("`PlotData2D` for three-dimensional `DGMultiMesh` solutions is only ",
+                 "implemented for `Affine` meshes with `Tet()` elements, got a `",
+                 nameof(MeshType), "` mesh with `",
+                 nameof(typeof(dg.basis.element_type)), "()` elements")
+end
+
 function PlotData1D(u, mesh, equations, solver, cache;
                     solution_variables = nothing, nvisnodes = nothing,
                     reinterpolate = default_reinterpolate(solver),
