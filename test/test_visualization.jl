@@ -770,10 +770,10 @@ end
         return SVector(x, y, coordinate)
     end
 
-    # Exercise the half-open ownership convention for every slice orientation on both domain
-    # boundaries, an interior mesh plane, and a plane cutting through the elements. The polygons
-    # must cover the [-1, 1]^2 cross-section exactly once in each case. `initial_condition_linear`
-    # is affine and thus represented exactly, so the sliced values must match it pointwise.
+    # The half-open ownership convention must make the polygons cover the [-1, 1]^2 cross-section
+    # exactly once, also on the domain boundaries and on an interior mesh plane.
+    # `initial_condition_linear` is affine and thus represented exactly, so the sliced values
+    # must match it pointwise.
     for (slice, slice_dimension) in ((:yz, 1), (:xz, 2), (:xy, 3)),
         coordinate in (-1.0, 0.0, 0.125, 1.0)
 

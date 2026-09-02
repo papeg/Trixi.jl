@@ -590,7 +590,8 @@ end
 
 # Intersect an affine tetrahedron with an axis-aligned plane. The vertex coordinates are stored
 # component-wise as `(x, y, z)`. Return the intersection polygon as cyclically ordered
-# barycentric coordinates with respect to the four tetrahedron vertices.
+# barycentric coordinates with respect to the four tetrahedron vertices, or an empty vector if
+# the tetrahedron only touches the plane in a single vertex or along an edge.
 function intersect_tetrahedron_with_plane(vertex_coordinates::NTuple{3,
                                                                      SVector{4, RealT}},
                                           slice_dimension,
@@ -602,6 +603,7 @@ function intersect_tetrahedron_with_plane(vertex_coordinates::NTuple{3,
     scale = max(one(RealT), abs(slice_coordinate_), maximum(abs, plane_coordinates))
     tolerance = 100 * eps(RealT) * scale
 
+    # Column `j` of the identity matrix are the barycentric coordinates of vertex `j`.
     barycentric_vertices = SMatrix{4, 4, RealT}(I)
     intersections = sizehint!(SVector{4, RealT}[], 4)
 
@@ -632,7 +634,8 @@ function intersect_tetrahedron_with_plane(vertex_coordinates::NTuple{3,
     end
 
     # Sort cyclically in the two plotted physical coordinate directions. This is required to
-    # split a quadrilateral into triangles without introducing crossing edges.
+    # split a quadrilateral into triangles without introducing crossing edges. The orientations
+    # have to agree with `_get_orientations`, which the caller uses for the same slice.
     orientation_x = slice_dimension == 1 ? 2 : 1
     orientation_y = slice_dimension == 3 ? 2 : 3
     centroid = sum(intersections) / length(intersections)
@@ -646,9 +649,10 @@ function intersect_tetrahedron_with_plane(vertex_coordinates::NTuple{3,
     return intersections
 end
 
-# Evaluate one component of the coordinates of a triangle of an intersection polygon, given as
-# barycentric coordinates with respect to the four vertices of the intersected tetrahedron.
-function triangle_coordinates(polygon, triangle, coordinates)
+# Evaluate one coordinate component at the three corners of `triangle`, a triple of indices into
+# the barycentric intersection polygon `polygon`. `coordinates` holds that component at the four
+# vertices of the intersected tetrahedron, either physical or on the reference element.
+function triangle_corner_values(polygon, triangle, coordinates)
     RealT = eltype(coordinates)
     return SVector{3, RealT}(ntuple(local_vertex -> dot(polygon[triangle[local_vertex]],
                                                         coordinates), 3))

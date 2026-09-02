@@ -804,6 +804,10 @@ PlotData2D(u::VectorOfArray, mesh, equations, dg::DGMulti{2}, cache; kwargs...) 
                                                                                              cache;
                                                                                              kwargs...)
 
+# Slice a three-dimensional solution on affine tetrahedra with the axis-aligned plane through
+# `point` selected by `slice`, following the same conventions as the `TreeMesh` version. Each cut
+# tetrahedron contributes one or two plotting triangles, so the result is a
+# `PlotData2DTriangulated` object and works with the existing plotting recipes.
 function PlotData2D(u::StructArray,
                     mesh::DGMultiMesh{3, <:Affine},
                     equations,
@@ -841,6 +845,8 @@ function PlotData2D(u::StructArray,
     # Use the same half-open convention as TreeMesh slicing. Thus, a plane coinciding with an
     # interior face is owned by only one of its two neighboring tetrahedra.
     lower_limit, upper_limit = extrema(global_vertex_coordinates[slice_dimension])
+    # Scale the tolerance with the coordinate magnitude so that it stays meaningful on domains
+    # much larger or smaller than the unit cube.
     scale = max(one(RealT), abs(slice_coordinate), abs(lower_limit), abs(upper_limit))
     tolerance = 100 * eps(RealT) * scale
     if slice_coordinate < lower_limit - tolerance ||
@@ -873,8 +879,8 @@ function PlotData2D(u::StructArray,
     isempty(intersection_polygons) &&
         error("Slice plane at coordinate $slice_coordinate does not intersect the mesh.")
 
-    # Every triangular intersection becomes one plotting element. A quadrilateral is split into
-    # two triangles. Keeping one tetrahedron per plotting element preserves DG discontinuities.
+    # A triangular intersection yields one plotting element, a quadrilateral two. Keeping one
+    # tetrahedron per plotting element preserves DG discontinuities.
     num_slice_elements = sum(length(polygon) - 2
                              for (_, polygon, _) in intersection_polygons)
     r_plot, s_plot = StartUpDG.equi_nodes(Tri(), rd.Nplot)
@@ -886,8 +892,8 @@ function PlotData2D(u::StructArray,
 
     # The restriction of a degree `N` polynomial on the tetrahedron to a plane is a degree `N`
     # polynomial on the intersection polygon. Sampling it at the `Tri()` interpolation nodes and
-    # lifting to the plotting nodes keeps the number of `Tet()` basis evaluations proportional to
-    # `rd.Np` instead of to the number of plotting nodes.
+    # lifting to the plotting nodes is therefore exact, and it keeps the number of `Tet()` basis
+    # evaluations proportional to `rd.Np` instead of to the number of plotting nodes.
     r_nodes, s_nodes = StartUpDG.nodes(Tri(), rd.N)
     triangle_node_interpolation = (StartUpDG.vandermonde(Tri(), 1, r_nodes, s_nodes) /
                                    vertex_vandermonde)
@@ -920,8 +926,7 @@ function PlotData2D(u::StructArray,
             slice_element += 1
             triangle = (1, last_vertex - 1, last_vertex)
             function patch_coordinates(coordinates)
-                triangle_coordinates(polygon, triangle,
-                                     coordinates)
+                triangle_corner_values(polygon, triangle, coordinates)
             end
 
             mul!(view(x_plot, :, slice_element), triangle_vertex_interpolation,
@@ -948,8 +953,9 @@ function PlotData2D(u::StructArray,
         end
     end
 
-    # Store one closed polyline per intersected tetrahedron. The fifth entry is NaN for triangular
-    # intersections and the closing vertex for quadrilateral intersections.
+    # Store one closed polyline per intersected tetrahedron: rows 1 to `n` hold the polygon
+    # vertices, row `n + 1` repeats the first one, and any remaining row stays NaN to separate
+    # the polylines from each other.
     x_face = fill(RealT(NaN), 5, length(intersection_polygons))
     y_face = fill(RealT(NaN), size(x_face))
     face_data = StructArray{SVector{nvars, uEltype}}(ntuple(_ -> fill(uEltype(NaN), 5,
