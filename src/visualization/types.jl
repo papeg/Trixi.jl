@@ -826,8 +826,8 @@ function PlotData2D(u::StructArray,
 
     rd = dg.basis
     md = mesh.md
-    global_vertex_coordinates = (md.VX, md.VY, md.VZ)
-    element_to_vertex = md.EToV
+    global_vertex_coordinates = get_VXYZ(md)
+    element_to_vertex = get_EToV(md)
 
     function element_vertex_coordinates(element)
         return ntuple(3) do dimension
@@ -849,7 +849,8 @@ function PlotData2D(u::StructArray,
                      " point[$slice_dimension]=$slice_coordinate must be between $lower_limit and $upper_limit"))
     end
 
-    intersection_polygons = Tuple{Int, Vector{SVector{4, RealT}}}[]
+    intersection_polygons = Tuple{Int, Vector{SVector{4, RealT}},
+                                  NTuple{3, SVector{4, RealT}}}[]
     at_upper_boundary = abs(slice_coordinate - upper_limit) <= tolerance
     for element in eachelement(mesh, dg, cache)
         vertex_coordinates = element_vertex_coordinates(element)
@@ -865,7 +866,7 @@ function PlotData2D(u::StructArray,
         polygon = intersect_tetrahedron_with_plane(vertex_coordinates, slice_dimension,
                                                    slice_coordinate)
         if !isempty(polygon)
-            push!(intersection_polygons, (element, polygon))
+            push!(intersection_polygons, (element, polygon, vertex_coordinates))
         end
     end
 
@@ -875,7 +876,7 @@ function PlotData2D(u::StructArray,
     # Every triangular intersection becomes one plotting element. A quadrilateral is split into
     # two triangles. Keeping one tetrahedron per plotting element preserves DG discontinuities.
     num_slice_elements = sum(length(polygon) - 2
-                             for (_, polygon) in intersection_polygons)
+                             for (_, polygon, _) in intersection_polygons)
     r_plot, s_plot = StartUpDG.equi_nodes(Tri(), rd.Nplot)
     r_vertices, s_vertices = StartUpDG.nodes(Tri(), 1)
     vertex_vandermonde = StartUpDG.vandermonde(Tri(), 1, r_vertices, s_vertices)
@@ -914,15 +915,13 @@ function PlotData2D(u::StructArray,
     solution_variables_ = digest_solution_variables(equations, solution_variables)
 
     slice_element = 0
-    for (element, polygon) in intersection_polygons
-        vertex_coordinates = element_vertex_coordinates(element)
+    for (element, polygon, vertex_coordinates) in intersection_polygons
         for last_vertex in 3:length(polygon)
             slice_element += 1
             triangle = (1, last_vertex - 1, last_vertex)
             function patch_coordinates(coordinates)
-                SVector{3, RealT}(ntuple(local_vertex -> dot(polygon[triangle[local_vertex]],
-                                                             coordinates),
-                                         3))
+                triangle_coordinates(polygon, triangle,
+                                     coordinates)
             end
 
             mul!(view(x_plot, :, slice_element), triangle_vertex_interpolation,
@@ -952,12 +951,11 @@ function PlotData2D(u::StructArray,
     # Store one closed polyline per intersected tetrahedron. The fifth entry is NaN for triangular
     # intersections and the closing vertex for quadrilateral intersections.
     x_face = fill(RealT(NaN), 5, length(intersection_polygons))
-    y_face = similar(x_face)
+    y_face = fill(RealT(NaN), size(x_face))
     face_data = StructArray{SVector{nvars, uEltype}}(ntuple(_ -> fill(uEltype(NaN), 5,
                                                                       length(intersection_polygons)),
                                                             nvars))
-    for (polygon_id, (element, polygon)) in enumerate(intersection_polygons)
-        vertex_coordinates = element_vertex_coordinates(element)
+    for (polygon_id, (element, polygon, vertex_coordinates)) in enumerate(intersection_polygons)
         num_vertices = length(polygon)
         for vertex in 1:num_vertices
             x_face[vertex, polygon_id] = dot(polygon[vertex],

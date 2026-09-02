@@ -646,6 +646,14 @@ function intersect_tetrahedron_with_plane(vertex_coordinates::NTuple{3,
     return intersections
 end
 
+# Evaluate one component of the coordinates of a triangle of an intersection polygon, given as
+# barycentric coordinates with respect to the four vertices of the intersected tetrahedron.
+function triangle_coordinates(polygon, triangle, coordinates)
+    RealT = eltype(coordinates)
+    return SVector{3, RealT}(ntuple(local_vertex -> dot(polygon[triangle[local_vertex]],
+                                                        coordinates), 3))
+end
+
 # Convert 3d unstructured data to 2d data.
 # Additional to the new unstructured data updated coordinates, levels and
 # center coordinates are returned.
