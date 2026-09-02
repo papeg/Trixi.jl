@@ -231,8 +231,8 @@ This creates the following plot:
 ![ScalarPlotData2D_example](https://user-images.githubusercontent.com/1156048/133856590-a9f0be02-8200-483b-af96-eab4a69bf2c7.png)
 
 ### Plotting a 3D solution as a 2D plot
-It is possible to plot 2D slices from 3D simulation data using the [`TreeMesh`](@ref)
-with the same commands as above:
+It is possible to plot 2D slices from 3D simulation data using the [`TreeMesh`](@ref) or a
+[`DGMultiMesh`](@ref) with affine tetrahedral elements, with the same commands as above:
 ```julia
 julia> plot(sol) # `sol` is from a 3D simulation
 ```
@@ -267,8 +267,9 @@ which results in a 2x3 grid of slices of the `yz`-plane:
 ![plot-v1-0.0-to-0.5pi](https://user-images.githubusercontent.com/72009492/130953841-58df57b2-aa96-4130-9b70-30151856f68f.PNG)
 
 The same `slice` and `point` keyword arguments slice three-dimensional
-[`DGMultiMesh`](@ref) solutions on affine tetrahedral elements. Curved meshes and
-non-tetrahedral elements are not yet supported by this method. For example,
+[`DGMultiMesh`](@ref) solutions on affine (straight-sided) tetrahedral elements. Curved
+meshes and non-tetrahedral elements are not supported by this method and raise an error.
+For example,
 ```julia
 julia> using Trixi, Plots
 
