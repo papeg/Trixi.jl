@@ -740,6 +740,8 @@ end
     @test size(pd.t, 1) > 0
     @test all(isfinite, pd.x)
     @test all(isfinite, pd.y)
+    # Unused wireframe slots must be `NaN` separators, not uninitialized memory.
+    @test isfinite.(pd.x_face) == isfinite.(pd.y_face)
     @test all(state -> all(isfinite, state), pd.data)
 
     # The explicit triangulated constructor must forward the slice keywords to PlotData2D.
@@ -791,6 +793,7 @@ end
     @test_throws ErrorException PlotData2D(sol; point = (0.0, 0.0, 2.0))
 
     @trixi_test_nowarn Plots.plot(pd["rho"])
+    @trixi_test_nowarn Plots.plot!(getmesh(pd))
     @trixi_test_nowarn Makie.plot(pd["rho"], plot_mesh = true)
     @trixi_test_nowarn Trixi.iplot(pd)
 end
