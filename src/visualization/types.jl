@@ -345,8 +345,7 @@ function PlotData2DTriangulated(sol::TrixiODESolution; kwargs...)
 end
 
 # If `u` is an `Array{<:SVectors}` and not a `StructArray`, convert it to a `StructArray` first.
-function PlotData2D(u::Array{<:SVector}, mesh, equations, dg::DGMulti, cache;
-                    solution_variables = nothing, nvisnodes = 2 * nnodes(dg))
+function PlotData2D(u::Array{<:SVector}, mesh, equations, dg::DGMulti, cache; kwargs...)
     nvars = length(first(u))
     u_structarray = StructArray{eltype(u)}(ntuple(_ -> zeros(eltype(first(u)), size(u)),
                                                   nvars))
@@ -355,8 +354,7 @@ function PlotData2D(u::Array{<:SVector}, mesh, equations, dg::DGMulti, cache;
     end
 
     # re-dispatch to PlotData2D with mesh, equations, dg, cache arguments
-    return PlotData2D(u_structarray, mesh, equations, dg, cache;
-                      solution_variables = solution_variables, nvisnodes = nvisnodes)
+    return PlotData2D(u_structarray, mesh, equations, dg, cache; kwargs...)
 end
 
 # constructor which returns an `PlotData2DTriangulated` object.
