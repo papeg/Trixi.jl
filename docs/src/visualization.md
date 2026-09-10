@@ -269,6 +269,8 @@ which results in a 2x3 grid of slices of the `yz`-plane:
 The same `slice` and `point` keyword arguments slice three-dimensional
 [`DGMultiMesh`](@ref) solutions on affine (straight-sided) tetrahedral elements. Curved
 meshes and non-tetrahedral elements are not supported by this method and raise an error.
+For this method, `nvisnodes` is accepted for interface compatibility but has no effect;
+the visualization nodes are determined by the DGMulti basis (`Nplot`).
 For example,
 ```julia
 julia> using Trixi, Plots

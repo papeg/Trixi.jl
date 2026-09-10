@@ -707,9 +707,13 @@ end
     @test all(barycentric -> sum(barycentric) ≈ 1.0, quadrilateral)
     @test all(barycentric -> sum(barycentric .* quad_vertices[3]) ≈ 0.0, quadrilateral)
 
-    # An outside plane and a plane merely touching one vertex have no 2D intersection.
+    # An outside plane and a plane merely touching one vertex or edge have no 2D intersection.
     @test isempty(Trixi.intersect_tetrahedron_with_plane(triangle_vertices, 3, 2.0))
     @test isempty(Trixi.intersect_tetrahedron_with_plane(triangle_vertices, 3, 1.0))
+    edge_vertices = (SVector(0.0, 1.0, 0.0, 0.0),
+                     SVector(0.0, 0.0, 1.0, 0.0),
+                     SVector(0.0, 0.0, 1.0, 1.0))
+    @test isempty(Trixi.intersect_tetrahedron_with_plane(edge_vertices, 3, 0.0))
 end
 
 @testitem "Visualization: PlotData2D (DGMulti 3D Tet slice)" setup=[
@@ -752,6 +756,17 @@ end
     @test pd_triangulated.x ≈ pd.x
     @test pd_triangulated.y ≈ pd.y
     @test pd_triangulated.data ≈ pd.data
+
+    # The `Array{SVector}` adapter must preserve the slice keywords when converting to a
+    # `StructArray`.
+    u_array = collect(parent(sol.u[end]))
+    pd_array = PlotData2D(u_array, semi;
+                          slice = :xy,
+                          point = (0.0, 0.0, 0.125),
+                          solution_variables = cons2cons)
+    @test pd_array.x ≈ pd.x
+    @test pd_array.y ≈ pd.y
+    @test pd_array.data ≈ pd.data
 
     function total_slice_area(plot_data)
         return sum(zip(eachcol(plot_data.x_face), eachcol(plot_data.y_face))) do (x, y)
