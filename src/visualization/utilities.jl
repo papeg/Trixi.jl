@@ -616,13 +616,16 @@ end
 function intersect_tetrahedron_with_plane(vertex_coordinates::NTuple{3,
                                                                      SVector{4, RealT}},
                                           slice_dimension,
-                                          slice_coordinate) where {RealT <: Real}
+                                          slice_coordinate;
+                                          orientation_x,
+                                          orientation_y,
+                                          tolerance::RealT =
+                                          100 * eps(RealT) * max(one(RealT), abs(convert(RealT,
+                                                                                     slice_coordinate)),
+                                                                                 maximum(abs, vertex_coordinates[slice_dimension]))) where {RealT <: Real}
     plane_coordinates = vertex_coordinates[slice_dimension]
     slice_coordinate_ = convert(RealT, slice_coordinate)
     distances = plane_coordinates .- slice_coordinate_
-
-    scale = max(one(RealT), abs(slice_coordinate_), maximum(abs, plane_coordinates))
-    tolerance = 100 * eps(RealT) * scale
 
     # Column `j` of the identity matrix are the barycentric coordinates of vertex `j`.
     barycentric_vertices = SMatrix{4, 4, RealT}(I)
@@ -655,10 +658,7 @@ function intersect_tetrahedron_with_plane(vertex_coordinates::NTuple{3,
     end
 
     # Sort cyclically in the two plotted physical coordinate directions. This is required to
-    # split a quadrilateral into triangles without introducing crossing edges. The orientations
-    # have to agree with `_get_orientations`, which the caller uses for the same slice.
-    orientation_x = slice_dimension == 1 ? 2 : 1
-    orientation_y = slice_dimension == 3 ? 2 : 3
+    # split a quadrilateral into triangles without introducing crossing edges.
     centroid = sum(intersections) / length(intersections)
     sort!(intersections;
           by = barycentric_coordinates -> begin
