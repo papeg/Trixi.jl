@@ -900,7 +900,10 @@ function PlotData2D(u::StructArray,
         end
 
         polygon = intersect_tetrahedron_with_plane(vertex_coordinates, slice_dimension,
-                                                   slice_coordinate)
+                                                  slice_coordinate;
+                                                  orientation_x = orientation_x,
+                                                  orientation_y = orientation_y,
+                                                  tolerance = tolerance)
         if !isempty(polygon)
             push!(intersection_polygons, (element, polygon, vertex_coordinates))
         end
@@ -1044,8 +1047,8 @@ end
 function throw_unsupported_dgmulti_3d(mesh::DGMultiMesh{3, MeshType},
                                       dg::DGMulti{3}) where {MeshType}
     return error("`PlotData2D` for three-dimensional `DGMultiMesh` solutions is only ",
-                 "implemented for `Affine` meshes with `Tet()` elements, got a `",
-                 nameof(MeshType), "` mesh with `",
+                 "implemented for `Affine` meshes with `Tet()` elements, got a mesh with `",
+                 nameof(MeshType), "` geometry and `",
                  nameof(typeof(dg.basis.element_type)), "()` elements")
 end
 
