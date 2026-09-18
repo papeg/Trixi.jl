@@ -620,9 +620,13 @@ function intersect_tetrahedron_with_plane(vertex_coordinates::NTuple{3,
                                           orientation_x,
                                           orientation_y,
                                           tolerance::RealT =
-                                          100 * eps(RealT) * max(one(RealT), abs(convert(RealT,
-                                                                                     slice_coordinate)),
-                                                                                 maximum(abs, vertex_coordinates[slice_dimension]))) where {RealT <: Real}
+                                          100 * eps(RealT) *
+                                          max(one(RealT),
+                                              abs(convert(RealT,
+                                                          slice_coordinate)),
+                                              maximum(abs,
+                                                      vertex_coordinates[slice_dimension]))) where {RealT <:
+                                                                                                    Real}
     plane_coordinates = vertex_coordinates[slice_dimension]
     slice_coordinate_ = convert(RealT, slice_coordinate)
     distances = plane_coordinates .- slice_coordinate_
