@@ -267,10 +267,11 @@ which results in a 2x3 grid of slices of the `yz`-plane:
 ![plot-v1-0.0-to-0.5pi](https://user-images.githubusercontent.com/72009492/130953841-58df57b2-aa96-4130-9b70-30151856f68f.PNG)
 
 The same `slice` and `point` keyword arguments slice three-dimensional
-[`DGMultiMesh`](@ref) solutions on affine (straight-sided) tetrahedral elements. Curved
-meshes and non-tetrahedral elements are not supported by this method and raise an error.
-For this method, `nvisnodes` is accepted for interface compatibility but has no effect;
-the visualization nodes are determined by the DGMulti basis (`Nplot`).
+[`DGMultiMesh`](@ref) solutions on affine (straight-sided) tetrahedral elements.
+Curved meshes and non-tetrahedral elements are not supported by this method and raise an error.
+For this method, `nvisnodes` is accepted for interface compatibility but has no effect.
+The visualization nodes are determined by the DGMulti basis (`Nplot`).
+
 For example,
 ```julia
 julia> using Trixi, Plots
@@ -284,18 +285,7 @@ julia> Plots.plot(pd["rho"])
 
 julia> Plots.plot!(getmesh(pd))
 ```
-slices the mesh at ``y = 0.5`` and overlays the outlines of the intersected
-tetrahedra. The same object can be visualized with Makie.jl, either as a heatmap of a
-single variable or as an interactive surface plot of all variables:
-```julia
-julia> using GLMakie
-
-julia> Makie.plot(pd["rho"], plot_mesh = true)
-
-julia> iplot(pd)
-```
-Note that [`iplot`](@ref) takes the whole `pd`, not a single variable.
-
+slices the mesh at ``y = 0.5`` and overlays the outlines of the intersected tetrahedra.
 
 ### Creating a 1D plot
 When plotting a 1D solution with
