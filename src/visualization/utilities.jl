@@ -615,21 +615,21 @@ end
 # the tetrahedron only touches the plane in a single vertex or along an edge.
 function intersect_tetrahedron_with_plane(vertex_coordinates::NTuple{3,
                                                                      SVector{4, RealT}},
-                                          slice_dimension,
-                                          slice_coordinate;
-                                          orientation_x,
-                                          orientation_y,
-                                          tolerance::RealT =
-                                          100 * eps(RealT) *
-                                          max(one(RealT),
-                                              abs(convert(RealT,
-                                                          slice_coordinate)),
-                                              maximum(abs,
-                                                      vertex_coordinates[slice_dimension]))) where {RealT <:
-                                                                                                    Real}
+                                          slice_dimension, slice_coordinate;
+                                          tolerance = nothing) where {RealT <: Real}
     plane_coordinates = vertex_coordinates[slice_dimension]
     slice_coordinate_ = convert(RealT, slice_coordinate)
     distances = plane_coordinates .- slice_coordinate_
+
+    if tolerance === nothing
+        scale = max(one(RealT), abs(slice_coordinate_), maximum(abs, plane_coordinates))
+        tolerance_ = 100 * eps(RealT) * scale
+    else
+        tolerance_ = convert(RealT, tolerance)
+    end
+
+    # In-plane directions in ascending order, matching `_get_orientations`.
+    orientation_x, orientation_y = filter(!=(slice_dimension), (1, 2, 3))
 
     # Column `j` of the identity matrix are the barycentric coordinates of vertex `j`.
     barycentric_vertices = SMatrix{4, 4, RealT}(I)
@@ -637,7 +637,7 @@ function intersect_tetrahedron_with_plane(vertex_coordinates::NTuple{3,
 
     # Add vertices lying on the plane once. Strict crossings below cannot duplicate them.
     for vertex in 1:4
-        if abs(distances[vertex]) <= tolerance
+        if abs(distances[vertex]) <= tolerance_
             push!(intersections, barycentric_vertices[:, vertex])
         end
     end
@@ -646,7 +646,7 @@ function intersect_tetrahedron_with_plane(vertex_coordinates::NTuple{3,
     for (left, right) in edges
         distance_left = distances[left]
         distance_right = distances[right]
-        if abs(distance_left) > tolerance && abs(distance_right) > tolerance &&
+        if abs(distance_left) > tolerance_ && abs(distance_right) > tolerance_ &&
            signbit(distance_left) != signbit(distance_right)
             fraction = distance_left / (distance_left - distance_right)
             push!(intersections,

@@ -901,8 +901,6 @@ function PlotData2D(u::StructArray,
 
         polygon = intersect_tetrahedron_with_plane(vertex_coordinates, slice_dimension,
                                                    slice_coordinate;
-                                                   orientation_x = orientation_x,
-                                                   orientation_y = orientation_y,
                                                    tolerance = tolerance)
         if !isempty(polygon)
             push!(intersection_polygons, (element, polygon, vertex_coordinates))
