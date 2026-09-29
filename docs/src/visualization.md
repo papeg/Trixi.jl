@@ -270,7 +270,7 @@ The same `slice` and `point` keyword arguments slice three-dimensional
 [`DGMultiMesh`](@ref) solutions on affine (straight-sided) tetrahedral elements.
 Curved meshes and non-tetrahedral elements are not supported by this method and raise an error.
 For this method, `nvisnodes` is accepted for interface compatibility but has no effect.
-The visualization nodes are determined by the DGMulti basis (`Nplot`).
+The DGMulti basis (`Nplot`) determines the sampling resolution of both the surface and its mesh lines.
 
 For example,
 ```julia

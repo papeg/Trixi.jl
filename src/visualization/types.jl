@@ -981,37 +981,40 @@ function PlotData2D(u::StructArray,
         end
     end
 
-    # Store one closed polyline per intersected tetrahedron: rows 1 to `n` hold the polygon
-    # vertices, row `n + 1` repeats the first one, and any remaining row stays NaN to separate
-    # the polylines from each other.
-    x_face = fill(RealT(NaN), 5, length(intersection_polygons))
+    # Sample edges at the surface resolution, omitting each edge's duplicated endpoint.
+    edge_fractions = (StartUpDG.equi_nodes(Line(), rd.Nplot)[1:(end - 1)] .+ 1) ./ 2
+    num_face_points = 4 * length(edge_fractions) + 1
+
+    # Store closed polylines and pad unused rows with NaN separators.
+    x_face = fill(RealT(NaN), num_face_points, length(intersection_polygons))
     y_face = fill(RealT(NaN), size(x_face))
-    face_data = StructArray{SVector{nvars, uEltype}}(ntuple(_ -> fill(uEltype(NaN), 5,
+    face_data = StructArray{SVector{nvars, uEltype}}(ntuple(_ -> fill(uEltype(NaN),
+                                                                      num_face_points,
                                                                       length(intersection_polygons)),
                                                             nvars))
     for (polygon_id, (element, polygon, vertex_coordinates)) in enumerate(intersection_polygons)
-        num_vertices = length(polygon)
-        for vertex in 1:num_vertices
-            x_face[vertex, polygon_id] = dot(polygon[vertex],
-                                             vertex_coordinates[orientation_x])
-            y_face[vertex, polygon_id] = dot(polygon[vertex],
-                                             vertex_coordinates[orientation_y])
+        wireframe = [(1 - fraction) * polygon[vertex] +
+                     fraction * polygon[mod1(vertex + 1, length(polygon))]
+                     for vertex in eachindex(polygon) for fraction in edge_fractions]
+        push!(wireframe, first(wireframe))
+        for node in eachindex(wireframe)
+            x_face[node, polygon_id] = dot(wireframe[node],
+                                           vertex_coordinates[orientation_x])
+            y_face[node, polygon_id] = dot(wireframe[node],
+                                           vertex_coordinates[orientation_y])
         end
-        x_face[num_vertices + 1, polygon_id] = x_face[1, polygon_id]
-        y_face[num_vertices + 1, polygon_id] = y_face[1, polygon_id]
 
-        corner_coordinates = ntuple(dimension -> [dot(polygon[vertex],
-                                                      reference_vertex_coordinates[dimension])
-                                                  for vertex in 1:num_vertices], 3)
+        face_coordinates = ntuple(dimension -> [dot(node,
+                                                    reference_vertex_coordinates[dimension])
+                                                for node in wireframe], 3)
         interpolation_matrix = StartUpDG.vandermonde(Tet(), rd.N,
-                                                     corner_coordinates...) /
+                                                     face_coordinates...) /
                                vandermonde_factorization
-        corner_data = view(face_data, 1:num_vertices, polygon_id)
+        polygon_data = view(face_data, 1:length(wireframe), polygon_id)
         StructArrays.foreachfield((output, input) -> mul!(output, interpolation_matrix,
                                                           input),
-                                  corner_data, view(u, :, element))
-        transform_to_solution_variables!(corner_data, solution_variables_, equations)
-        face_data[num_vertices + 1, polygon_id] = face_data[1, polygon_id]
+                                  polygon_data, view(u, :, element))
+        transform_to_solution_variables!(polygon_data, solution_variables_, equations)
     end
 
     triangulation = reference_plotting_triangulation(rd_slice.rstp)

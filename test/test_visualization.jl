@@ -874,6 +874,53 @@ end
     end
 end
 
+@testitem "Visualization: PlotData2D (DGMulti 3D slice wireframe)" tags=[:misc_part1] begin
+    equations = CompressibleEulerEquations3D(1.4)
+    state(x, y, z) = SVector(2 + x^2 + y^2 + z^2, 0.1 + x, -0.2 + y,
+                            0.7 + z, 20 + x * y * z)
+
+    triangle = (vertices = ([0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0],
+                            [0.0, 0.0, 0.0, 1.0]),
+                coordinate = 0.25,
+                corners = (SVector(0.0, 0.0), SVector(0.75, 0.0), SVector(0.0, 0.75)))
+    quadrilateral = (vertices = ([0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0],
+                                 [-1.0, -1.0, 1.0, 1.0]),
+                     coordinate = 0.0,
+                     corners = (SVector(0.0, 0.0), SVector(0.5, 0.0),
+                                SVector(0.5, 0.5), SVector(0.0, 0.5)))
+
+    for cut in (triangle, quadrilateral), Nplot in (2, 6)
+        dg = DGMulti(polydeg = 3, element_type = Tet(), Nplot = Nplot)
+        mesh = DGMultiMesh(dg, cut.vertices, [1 2 3 4])
+        u = state.(mesh.md.x, mesh.md.y, mesh.md.z)
+
+        for solution_variables in (cons2cons, cons2prim)
+            pd = PlotData2D(u, mesh, equations, dg, nothing;
+                            point = (0.0, 0.0, cut.coordinate), solution_variables)
+            finite = isfinite.(pd.x_face)
+            @test finite == isfinite.(pd.y_face)
+            @test all(i -> finite[i] ? all(isfinite, pd.face_data[i]) :
+                          all(isnan, pd.face_data[i]), eachindex(finite))
+
+            # Edge midpoints must be sampled instead of joining only the corners.
+            for vertex in eachindex(cut.corners)
+                midpoint = (cut.corners[vertex] +
+                            cut.corners[mod1(vertex + 1, length(cut.corners))]) / 2
+                @test any(i -> isapprox(SVector(pd.x_face[i], pd.y_face[i]), midpoint;
+                                        atol = 1.0e-12), findall(finite))
+            end
+
+            # Convert the interpolated state at each edge point to the requested variables.
+            @test all(i -> pd.face_data[i] ≈
+                      solution_variables(state(pd.x_face[i], pd.y_face[i], cut.coordinate),
+                                         equations), findall(finite))
+            @test pd.x_face[1] == pd.x_face[findlast(finite)]
+            @test pd.y_face[1] == pd.y_face[findlast(finite)]
+            @test pd.face_data[1] ≈ pd.face_data[findlast(finite)]
+        end
+    end
+end
+
 @testitem "Visualization: PlotData2D (DGMulti 3D unsupported)" setup=[
     Setup,
     Visualization
