@@ -180,9 +180,9 @@ getmesh(pd::AbstractPlotData) = PlotMesh(pd)
                grid_lines=true, max_supported_level=11, nvisnodes=nothing,
                slice=:xy, point=(0.0, 0.0, 0.0))
 
-Create a new `PlotData2D` object that can be used for visualizing 2D/3D DGSEM solution data array
-`u` with `Plots.jl`. All relevant geometrical information is extracted from the semidiscretization
-`semi`. By default, the primitive variables (if existent) or the conservative variables (otherwise)
+Create a `PlotData2D` object for visualizing 2D data or slices of 3D solution data `u`
+with `Plots.jl` or `Makie.jl`. Geometrical information is extracted from the semidiscretization
+`semi`. By default, the primitive variables (if available) or the conservative variables (otherwise)
 from the solution are used for plotting. This can be changed by passing an appropriate conversion
 function to `solution_variables`.
 
@@ -190,7 +190,7 @@ For coupled semidiscretizations, i.e., `semi isa` [`SemidiscretizationCoupled`](
 `PlotData2D` objects is returned, one for each semidiscretization which is part of the
 coupled semidiscretization.
 
-If `grid_lines` is `true`, also extract grid vertices for visualizing the mesh. The output
+For `TreeMesh`, if `grid_lines` is `true`, also extract vertices for visualizing the mesh. The output
 resolution is indirectly set via `max_supported_level`: all data is interpolated to
 `2^max_supported_level` uniformly distributed points in each spatial direction, also setting the
 maximum allowed refinement level in the solution. `nvisnodes` specifies the number of visualization
@@ -206,7 +206,13 @@ error telling you to increase it.
 When visualizing data from a three-dimensional simulation, a 2D slice is extracted for plotting.
 `slice` specifies the plane that is being sliced and may be `:xy`, `:xz`, or `:yz`.
 The slice position is specified by a `point` that lies on it, which defaults to `(0.0, 0.0, 0.0)`.
-Both of these values are ignored when visualizing 2D data.
+For two-dimensional `TreeMesh` data, `slice` and `point` are ignored.
+
+For three-dimensional [`DGMultiMesh`](@ref) solutions, slicing supports affine (straight-sided)
+tetrahedral elements and returns a `PlotData2DTriangulated` object. Curved meshes and other
+element shapes raise an error. Here, `nvisnodes` is ignored; set `Nplot` when constructing
+[`DGMulti`](@ref), e.g., `DGMulti(polydeg = 3, element_type = Tet(), Nplot = 15)`, to control
+the sampling resolution of the surface and its mesh lines.
 
 # Examples
 ```julia
@@ -834,10 +840,7 @@ PlotData2D(u::VectorOfArray, mesh, equations, dg::DGMulti{2}, cache; kwargs...) 
                                                                                              cache;
                                                                                              kwargs...)
 
-# Slice a three-dimensional solution on affine tetrahedra with the axis-aligned plane through
-# `point` selected by `slice`, following the same conventions as the `TreeMesh` version. Each cut
-# tetrahedron contributes one or two plotting triangles, so the result is a
-# `PlotData2DTriangulated` object and works with the existing plotting recipes.
+# Slice affine tetrahedra into triangular patches for the existing plotting recipes.
 function PlotData2D(u::StructArray,
                     mesh::DGMultiMesh{3, <:Affine},
                     equations,
@@ -859,73 +862,14 @@ function PlotData2D(u::StructArray,
     slice_coordinate = convert(RealT, point[slice_dimension])
 
     rd = dg.basis
-    md = mesh.md
-    global_vertex_coordinates = get_VXYZ(md)
-    element_to_vertex = get_EToV(md)
+    intersection_polygons = tetrahedral_slice_polygons(mesh, dg, slice_dimension,
+                                                       slice_coordinate)
 
-    function element_vertex_coordinates(element)
-        return ntuple(3) do dimension
-            SVector{4, RealT}(ntuple(4) do local_vertex
-                                  vertex = element_to_vertex[element, local_vertex]
-                                  global_vertex_coordinates[dimension][vertex]
-                              end)
-        end
-    end
-
-    lower_limit, upper_limit = extrema(global_vertex_coordinates[slice_dimension])
-    tolerance = slice_plane_tolerance(lower_limit, upper_limit, slice_coordinate)
-    if slice_coordinate < lower_limit - tolerance ||
-       slice_coordinate > upper_limit + tolerance
-        error(string("Slice plane is outside of domain.",
-                     " point[$slice_dimension]=$slice_coordinate must be between $lower_limit and $upper_limit"))
-    end
-
-    intersection_polygons = Tuple{Int, Vector{SVector{4, RealT}},
-                                  NTuple{3, SVector{4, RealT}}}[]
-    for element in eachelement(mesh, dg, cache)
-        vertex_coordinates = element_vertex_coordinates(element)
-        minimum_coordinate, maximum_coordinate = extrema(vertex_coordinates[slice_dimension])
-        # Use the element size so distant vertices do not inflate the intersection tolerance.
-        tolerance = slice_plane_tolerance(minimum_coordinate, maximum_coordinate,
-                                          slice_coordinate)
-        # Assign shared faces to the tetrahedron on the positive side of the slice.
-        intersects_half_open = (minimum_coordinate - slice_coordinate <= tolerance &&
-                                maximum_coordinate - slice_coordinate > tolerance)
-        intersects_upper_boundary = (abs(slice_coordinate - upper_limit) <= tolerance &&
-                                     abs(maximum_coordinate - upper_limit) <= tolerance)
-        if !intersects_half_open && !intersects_upper_boundary
-            # Keep exposed boundary faces even below the domain's upper limit.
-            intersects_boundary_face = any(eachindex(rd.fv)) do face
-                global_face = (element - 1) * rd.num_faces + face
-                md.FToF[face, element] == global_face &&
-                    all(vertex -> abs(vertex_coordinates[slice_dimension][vertex] -
-                                      slice_coordinate) <= tolerance, rd.fv[face])
-            end
-            intersects_boundary_face || continue
-        end
-
-        polygon = intersect_tetrahedron_with_plane(vertex_coordinates, slice_dimension,
-                                                   slice_coordinate;
-                                                   tolerance = tolerance)
-        if !isempty(polygon)
-            push!(intersection_polygons, (element, polygon, vertex_coordinates))
-        end
-    end
-
-    isempty(intersection_polygons) &&
-        error("Slice plane at coordinate $slice_coordinate does not intersect the mesh.")
-
-    # A triangular intersection yields one plotting element, a quadrilateral two. Keeping one
-    # tetrahedron per plotting element preserves DG discontinuities.
+    # Keep separate patches for each tetrahedron to preserve DG discontinuities.
     num_slice_elements = sum(length(polygon) - 2
                              for (_, polygon, _) in intersection_polygons)
 
-    # The restriction of a degree `N` polynomial on the tetrahedron to a plane is a degree `N`
-    # polynomial on the intersection polygon. Sampling it at the nodes of a degree `N` triangle
-    # and interpolating to the plotting nodes is therefore exact, and it keeps the number of
-    # `Tet()` basis evaluations proportional to `rd.Np` instead of to the number of plotting
-    # nodes. `rd_slice.V1` interpolates from the three triangle vertices to those nodes, and
-    # `rd_slice.Vp` from the nodes to the plotting nodes.
+    # Restriction to a plane preserves polynomial degree, so triangle nodes suffice.
     rd_slice = RefElemData(Tri(), rd.N; Nplot = rd.Nplot)
     num_plotting_points = size(rd_slice.Vp, 1)
     num_triangle_nodes = rd_slice.Np
@@ -934,17 +878,12 @@ function PlotData2D(u::StructArray,
     x_plot = zeros(RealT, num_plotting_points, num_slice_elements)
     y_plot = similar(x_plot)
 
-    nvars = nvariables(equations)
-    uEltype = eltype(first(u))
-    u_plot = StructArray{SVector{nvars, uEltype}}(ntuple(_ -> zeros(uEltype,
-                                                                    num_plotting_points,
-                                                                    num_slice_elements),
-                                                         nvars))
+    u_plot = similar(u, (num_plotting_points, num_slice_elements))
+    u_slice = similar(u, (num_triangle_nodes,))
 
     reference_vertex_coordinates = map(coordinates -> SVector{4, RealT}(coordinates),
                                        StartUpDG.nodes(Tet(), 1))
     reference_coordinates = ntuple(_ -> Vector{RealT}(undef, num_triangle_nodes), 3)
-    plotting_interpolation = Matrix{RealT}(undef, num_plotting_points, rd.Np)
     vandermonde_factorization = LinearAlgebra.factorize(rd.VDM)
     solution_variables_ = digest_solution_variables(equations, solution_variables)
 
@@ -969,52 +908,19 @@ function PlotData2D(u::StructArray,
             interpolation_matrix = StartUpDG.vandermonde(Tet(), rd.N,
                                                          reference_coordinates...) /
                                    vandermonde_factorization
-            mul!(plotting_interpolation, rd_slice.Vp, interpolation_matrix)
-            StructArrays.foreachfield((output, input) -> mul!(output,
-                                                              plotting_interpolation,
-                                                              input),
-                                      view(u_plot, :, slice_element),
-                                      view(u, :, element))
+            apply_to_each_field(mul_by!(interpolation_matrix), u_slice, view(u, :, element))
+            apply_to_each_field(mul_by!(rd_slice.Vp), view(u_plot, :, slice_element),
+                                u_slice)
             transform_to_solution_variables!(view(u_plot, :, slice_element),
                                              solution_variables_, equations)
         end
     end
 
-    # Sample edges at the surface resolution, omitting each edge's duplicated endpoint.
-    edge_fractions = (StartUpDG.equi_nodes(Line(), rd.Nplot)[1:(end - 1)] .+ 1) ./ 2
-    num_face_points = 4 * length(edge_fractions) + 1
-
-    # Store closed polylines and pad unused rows with NaN separators.
-    x_face = fill(RealT(NaN), num_face_points, length(intersection_polygons))
-    y_face = fill(RealT(NaN), size(x_face))
-    face_data = StructArray{SVector{nvars, uEltype}}(ntuple(_ -> fill(uEltype(NaN),
-                                                                      num_face_points,
-                                                                      length(intersection_polygons)),
-                                                            nvars))
-    for (polygon_id, (element, polygon, vertex_coordinates)) in enumerate(intersection_polygons)
-        wireframe = [(1 - fraction) * polygon[vertex] +
-                     fraction * polygon[mod1(vertex + 1, length(polygon))]
-                     for vertex in eachindex(polygon) for fraction in edge_fractions]
-        push!(wireframe, first(wireframe))
-        for node in eachindex(wireframe)
-            x_face[node, polygon_id] = dot(wireframe[node],
-                                           vertex_coordinates[orientation_x])
-            y_face[node, polygon_id] = dot(wireframe[node],
-                                           vertex_coordinates[orientation_y])
-        end
-
-        face_coordinates = ntuple(dimension -> [dot(node,
-                                                    reference_vertex_coordinates[dimension])
-                                                for node in wireframe], 3)
-        interpolation_matrix = StartUpDG.vandermonde(Tet(), rd.N,
-                                                     face_coordinates...) /
-                               vandermonde_factorization
-        polygon_data = view(face_data, 1:length(wireframe), polygon_id)
-        StructArrays.foreachfield((output, input) -> mul!(output, interpolation_matrix,
-                                                          input),
-                                  polygon_data, view(u, :, element))
-        transform_to_solution_variables!(polygon_data, solution_variables_, equations)
-    end
+    x_face, y_face, face_data = slice_plotting_wireframe(u, intersection_polygons, rd,
+                                                         (orientation_x, orientation_y),
+                                                         reference_vertex_coordinates,
+                                                         vandermonde_factorization,
+                                                         equations, solution_variables_)
 
     triangulation = reference_plotting_triangulation(rd_slice.rstp)
     variable_names = SVector(varnames(solution_variables_, equations))
@@ -1023,20 +929,15 @@ function PlotData2D(u::StructArray,
                                   x_face, y_face, face_data, variable_names)
 end
 
-function PlotData2D(u::VectorOfArray, mesh::DGMultiMesh{3, <:Affine}, equations,
-                    dg::DGMulti{3, Tet}, cache; kwargs...)
+function PlotData2D(u::VectorOfArray, mesh::DGMultiMesh{3}, equations,
+                    dg::DGMulti{3}, cache; kwargs...)
     return PlotData2D(parent(u), mesh, equations, dg, cache; kwargs...)
 end
 
-# Catch unsupported DGMultiMesh{3}
+# Report unsupported geometries instead of recursing through the generic constructors.
 function PlotData2D(u::StructArray, mesh::DGMultiMesh{3}, equations, dg::DGMulti{3},
                     cache;
                     kwargs...)
-    return throw_unsupported_dgmulti_3d(mesh, dg)
-end
-
-function PlotData2D(u::VectorOfArray, mesh::DGMultiMesh{3}, equations, dg::DGMulti{3},
-                    cache; kwargs...)
     return throw_unsupported_dgmulti_3d(mesh, dg)
 end
 

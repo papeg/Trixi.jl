@@ -725,9 +725,9 @@ end
         offset = RealT == Float32 ? RealT(2.0^10) : RealT(2.0^20)
 
         for (scale, translation) in ((RealT(1.0e-14), zero(RealT)),
-                                    (one(RealT), zero(RealT)),
-                                    (RealT(1.0e14), zero(RealT)),
-                                    (translated_scale, offset)), dimension in 1:3
+                                     (one(RealT), zero(RealT)),
+                                     (RealT(1.0e14), zero(RealT)),
+                                     (translated_scale, offset)), dimension in 1:3
             coordinates = ntuple(d -> scale * vertices[d] .+
                                       (d == dimension ? translation : zero(RealT)), 3)
             polygon = Trixi.intersect_tetrahedron_with_plane(coordinates, dimension,
@@ -782,8 +782,7 @@ end
     @test pd_triangulated.y ≈ pd.y
     @test pd_triangulated.data ≈ pd.data
 
-    # The `Array{SVector}` adapter must preserve the slice keywords when converting to a
-    # `StructArray`.
+    # Preserve slice keywords when converting an array of states to a StructArray.
     u_array = collect(parent(sol.u[end]))
     pd_array = PlotData2D(u_array, semi;
                           slice = :xy,
@@ -810,10 +809,7 @@ end
         return SVector(x, y, coordinate)
     end
 
-    # The half-open ownership convention must make the polygons cover the [-1, 1]^2 cross-section
-    # exactly once, also on the domain boundaries and on an interior mesh plane.
-    # `initial_condition_linear` is affine and thus represented exactly, so the sliced values
-    # must match it pointwise.
+    # Cover each slice exactly once and reproduce the affine solution pointwise.
     for (slice, slice_dimension) in ((:yz, 1), (:xz, 2), (:xy, 3)),
         coordinate in (-1.0, 0.0, 0.125, 1.0)
 
@@ -907,7 +903,7 @@ end
     vertices, element_to_vertex = uniform_mesh(Tet(), 2, 2, 2)
 
     for (scale, translation) in ((1.0e-14, 0.0), (1.0, 0.0), (1.0e14, 0.0),
-                                (2.0^-26, 2.0^20)),
+                                 (2.0^-26, 2.0^20)),
         (slice, dimension) in ((:yz, 1), (:xz, 2), (:xy, 3))
 
         coordinates = ntuple(d -> scale .* vertices[d] .+
@@ -952,7 +948,7 @@ end
 @testitem "Visualization: PlotData2D (DGMulti 3D slice wireframe)" tags=[:misc_part1] begin
     equations = CompressibleEulerEquations3D(1.4)
     state(x, y, z) = SVector(2 + x^2 + y^2 + z^2, 0.1 + x, -0.2 + y,
-                            0.7 + z, 20 + x * y * z)
+                             0.7 + z, 20 + x * y * z)
 
     triangle = (vertices = ([0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0],
                             [0.0, 0.0, 0.0, 1.0]),
@@ -972,10 +968,15 @@ end
         for solution_variables in (cons2cons, cons2prim)
             pd = PlotData2D(u, mesh, equations, dg, nothing;
                             point = (0.0, 0.0, cut.coordinate), solution_variables)
+            # Preserve the cubic state through both interpolation steps before converting it.
+            @test all(i -> pd.data[i] ≈
+                           solution_variables(state(pd.x[i], pd.y[i], cut.coordinate),
+                                              equations),
+                      eachindex(pd.data))
             finite = isfinite.(pd.x_face)
             @test finite == isfinite.(pd.y_face)
             @test all(i -> finite[i] ? all(isfinite, pd.face_data[i]) :
-                          all(isnan, pd.face_data[i]), eachindex(finite))
+                           all(isnan, pd.face_data[i]), eachindex(finite))
 
             # Edge midpoints must be sampled instead of joining only the corners.
             for vertex in eachindex(cut.corners)
@@ -987,8 +988,9 @@ end
 
             # Convert the interpolated state at each edge point to the requested variables.
             @test all(i -> pd.face_data[i] ≈
-                      solution_variables(state(pd.x_face[i], pd.y_face[i], cut.coordinate),
-                                         equations), findall(finite))
+                           solution_variables(state(pd.x_face[i], pd.y_face[i],
+                                                    cut.coordinate),
+                                              equations), findall(finite))
             @test pd.x_face[1] == pd.x_face[findlast(finite)]
             @test pd.y_face[1] == pd.y_face[findlast(finite)]
             @test pd.face_data[1] ≈ pd.face_data[findlast(finite)]
@@ -1000,8 +1002,7 @@ end
     Setup,
     Visualization
 ] tags=[:misc_part1] begin
-    # Slicing needs the four vertices of an affine tetrahedron. Every other three-dimensional
-    # `DGMulti` configuration must say so instead of recursing into a stack overflow.
+    # Reject unsupported elements and curved meshes with a clear error.
     @test_trixi_include(joinpath(EXAMPLES_DIR, "dgmulti_3d",
                                  "elixir_euler_weakform_periodic.jl"),
                         cells_per_dimension=(2, 2, 2), tspan=(0.0, 0.0),

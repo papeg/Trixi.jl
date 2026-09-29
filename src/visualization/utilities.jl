@@ -609,6 +609,113 @@ function cell2node(cell_centered_data)
     return node_centered_data
 end
 
+# Collect intersection polygons while retaining their tetrahedron's coordinates and index.
+function tetrahedral_slice_polygons(mesh, dg, slice_dimension, slice_coordinate)
+    RealT = real(dg)
+    rd = dg.basis
+    md = mesh.md
+    global_vertex_coordinates = get_VXYZ(md)
+    element_to_vertex = get_EToV(md)
+
+    function element_vertex_coordinates(element)
+        return ntuple(3) do dimension
+            SVector{4, RealT}(ntuple(4) do local_vertex
+                                  vertex = element_to_vertex[element, local_vertex]
+                                  global_vertex_coordinates[dimension][vertex]
+                              end)
+        end
+    end
+
+    lower_limit, upper_limit = extrema(global_vertex_coordinates[slice_dimension])
+    domain_tolerance = slice_plane_tolerance(lower_limit, upper_limit, slice_coordinate)
+    if slice_coordinate < lower_limit - domain_tolerance ||
+       slice_coordinate > upper_limit + domain_tolerance
+        error(string("Slice plane is outside of domain.",
+                     " point[$slice_dimension]=$slice_coordinate must be between $lower_limit and $upper_limit"))
+    end
+
+    intersection_polygons = Tuple{Int, Vector{SVector{4, RealT}},
+                                  NTuple{3, SVector{4, RealT}}}[]
+    for element in eachelement(mesh, dg)
+        vertex_coordinates = element_vertex_coordinates(element)
+        minimum_coordinate, maximum_coordinate = extrema(vertex_coordinates[slice_dimension])
+        # Use the element size so distant vertices do not inflate the intersection tolerance.
+        tolerance = slice_plane_tolerance(minimum_coordinate, maximum_coordinate,
+                                          slice_coordinate)
+        # Assign shared faces to the tetrahedron on the positive side of the slice.
+        intersects_half_open = (minimum_coordinate - slice_coordinate <= tolerance &&
+                                maximum_coordinate - slice_coordinate > tolerance)
+        intersects_upper_boundary = (abs(slice_coordinate - upper_limit) <= tolerance &&
+                                     abs(maximum_coordinate - upper_limit) <= tolerance)
+        if !intersects_half_open && !intersects_upper_boundary
+            # Keep exposed boundary faces even below the domain's upper limit.
+            intersects_boundary_face = any(eachindex(rd.fv)) do face
+                global_face = (element - 1) * rd.num_faces + face
+                md.FToF[face, element] == global_face &&
+                    all(vertex -> abs(vertex_coordinates[slice_dimension][vertex] -
+                                      slice_coordinate) <= tolerance, rd.fv[face])
+            end
+            intersects_boundary_face || continue
+        end
+
+        polygon = intersect_tetrahedron_with_plane(vertex_coordinates, slice_dimension,
+                                                   slice_coordinate;
+                                                   tolerance = tolerance)
+        if !isempty(polygon)
+            push!(intersection_polygons, (element, polygon, vertex_coordinates))
+        end
+    end
+
+    isempty(intersection_polygons) &&
+        error("Slice plane at coordinate $slice_coordinate does not intersect the mesh.")
+
+    return intersection_polygons
+end
+
+# Sample each polygon's mesh lines in physical coordinates and solution variables.
+function slice_plotting_wireframe(u, intersection_polygons, rd, orientations,
+                                  reference_vertex_coordinates, vandermonde_factorization,
+                                  equations, solution_variables)
+    RealT = eltype(first(reference_vertex_coordinates))
+    orientation_x, orientation_y = orientations
+
+    # Sample edges at the surface resolution, omitting each edge's duplicated endpoint.
+    edge_fractions = (StartUpDG.equi_nodes(Line(), rd.Nplot)[1:(end - 1)] .+ 1) ./ 2
+    num_face_points = 4 * length(edge_fractions) + 1
+
+    # Store closed polylines and pad unused rows with NaN separators.
+    x_face = fill(RealT(NaN), num_face_points, length(intersection_polygons))
+    y_face = fill(RealT(NaN), size(x_face))
+    face_data = similar(u, size(x_face))
+    StructArrays.foreachfield(data -> fill!(data, NaN), face_data)
+    for (polygon_id, (element, polygon, vertex_coordinates)) in enumerate(intersection_polygons)
+        wireframe = [(1 - fraction) * polygon[vertex] +
+                     fraction * polygon[mod1(vertex + 1, length(polygon))]
+                     for vertex in eachindex(polygon) for fraction in edge_fractions]
+        push!(wireframe, first(wireframe))
+        for node in eachindex(wireframe)
+            x_face[node, polygon_id] = dot(wireframe[node],
+                                           vertex_coordinates[orientation_x])
+            y_face[node, polygon_id] = dot(wireframe[node],
+                                           vertex_coordinates[orientation_y])
+        end
+
+        face_coordinates = ntuple(dimension -> [dot(node,
+                                                    reference_vertex_coordinates[dimension])
+                                                for node in wireframe], 3)
+        interpolation_matrix = StartUpDG.vandermonde(Tet(), rd.N,
+                                                     face_coordinates...) /
+                               vandermonde_factorization
+        polygon_data = view(face_data, 1:length(wireframe), polygon_id)
+        StructArrays.foreachfield((output, input) -> mul!(output, interpolation_matrix,
+                                                          input),
+                                  polygon_data, view(u, :, element))
+        transform_to_solution_variables!(polygon_data, solution_variables, equations)
+    end
+
+    return x_face, y_face, face_data
+end
+
 # Account for element size and rounding of translated coordinates.
 function slice_plane_tolerance(lower_limit, upper_limit, slice_coordinate)
     extent = upper_limit - lower_limit
@@ -616,10 +723,7 @@ function slice_plane_tolerance(lower_limit, upper_limit, slice_coordinate)
     return max(100 * eps(typeof(scale)) * extent, 2 * eps(scale))
 end
 
-# Intersect an affine tetrahedron with an axis-aligned plane. The vertex coordinates are stored
-# component-wise as `(x, y, z)`. Return the intersection polygon as cyclically ordered
-# barycentric coordinates with respect to the four tetrahedron vertices, or an empty vector if
-# the tetrahedron only touches the plane in a single vertex or along an edge.
+# Return the tetrahedron-plane intersection as cyclically ordered barycentric vertices.
 function intersect_tetrahedron_with_plane(vertex_coordinates::NTuple{3,
                                                                      SVector{4, RealT}},
                                           slice_dimension, slice_coordinate;
@@ -637,7 +741,7 @@ function intersect_tetrahedron_with_plane(vertex_coordinates::NTuple{3,
     # In-plane directions in ascending order, matching `_get_orientations`.
     orientation_x, orientation_y = filter(!=(slice_dimension), (1, 2, 3))
 
-    # Column `j` of the identity matrix are the barycentric coordinates of vertex `j`.
+    # Each identity column gives the barycentric coordinates of one tetrahedron vertex.
     barycentric_vertices = SMatrix{4, 4, RealT}(I)
     intersections = sizehint!(SVector{4, RealT}[], 4)
 
@@ -667,8 +771,7 @@ function intersect_tetrahedron_with_plane(vertex_coordinates::NTuple{3,
         return intersections
     end
 
-    # Sort cyclically in the two plotted physical coordinate directions. This is required to
-    # split a quadrilateral into triangles without introducing crossing edges.
+    # Sort vertices cyclically to triangulate quadrilaterals without crossing edges.
     centroid = sum(intersections) / length(intersections)
     sort!(intersections;
           by = barycentric_coordinates -> begin
@@ -680,9 +783,7 @@ function intersect_tetrahedron_with_plane(vertex_coordinates::NTuple{3,
     return intersections
 end
 
-# Evaluate one coordinate component at the three corners of `triangle`, a triple of indices into
-# the barycentric intersection polygon `polygon`. `coordinates` holds that component at the four
-# vertices of the intersected tetrahedron, either physical or on the reference element.
+# Evaluate a coordinate component at the three corners of a slice triangle.
 function triangle_corner_values(polygon, triangle, coordinates)
     RealT = eltype(coordinates)
     return SVector{3, RealT}(ntuple(local_vertex -> dot(polygon[triangle[local_vertex]],

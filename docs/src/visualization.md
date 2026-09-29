@@ -242,9 +242,7 @@ customize this behavior by explicitly creating a `PlotData2D` object and passing
 appropriate keyword arguments:
 * `slice` specifies the plane which is being sliced and can be `:xy`, `:xz`,
   or `:yz` (default: `:xy`)
-* `point` specifies a three-dimensional point. The sliced plane is then created
-  such that it lies on the point (default: `(0.0, 0.0, 0.0)`).
-All other attributes for [`PlotData2D`](@ref) objects apply here as well.
+* `point` specifies a point on the slice plane (default: `(0.0, 0.0, 0.0)`).
 
 For example, to plot the velocity field orthogonal to the yz-plane at different
 x-axis locations, you can execute
@@ -270,7 +268,9 @@ The same `slice` and `point` keyword arguments slice three-dimensional
 [`DGMultiMesh`](@ref) solutions on affine (straight-sided) tetrahedral elements.
 Curved meshes and non-tetrahedral elements are not supported by this method and raise an error.
 For this method, `nvisnodes` is accepted for interface compatibility but has no effect.
-The DGMulti basis (`Nplot`) determines the sampling resolution of both the surface and its mesh lines.
+Set `Nplot` when constructing [`DGMulti`](@ref), for example
+`DGMulti(polydeg = 3, element_type = Tet(), Nplot = 15)`, to control the sampling
+resolution of both the surface and its mesh lines.
 
 For example,
 ```julia
