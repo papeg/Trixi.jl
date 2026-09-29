@@ -914,25 +914,17 @@ function PlotData2D(u::StructArray,
     # tetrahedron per plotting element preserves DG discontinuities.
     num_slice_elements = sum(length(polygon) - 2
                              for (_, polygon, _) in intersection_polygons)
-    r_plot, s_plot = StartUpDG.equi_nodes(Tri(), rd.Nplot)
-    r_vertices, s_vertices = StartUpDG.nodes(Tri(), 1)
-    vertex_vandermonde = StartUpDG.vandermonde(Tri(), 1, r_vertices, s_vertices)
-    triangle_vertex_interpolation = (StartUpDG.vandermonde(Tri(), 1, r_plot, s_plot) /
-                                     vertex_vandermonde)
-    num_plotting_points = length(r_plot)
 
     # The restriction of a degree `N` polynomial on the tetrahedron to a plane is a degree `N`
-    # polynomial on the intersection polygon. Sampling it at the `Tri()` interpolation nodes and
-    # lifting to the plotting nodes is therefore exact, and it keeps the number of `Tet()` basis
-    # evaluations proportional to `rd.Np` instead of to the number of plotting nodes.
-    r_nodes, s_nodes = StartUpDG.nodes(Tri(), rd.N)
-    triangle_node_interpolation = (StartUpDG.vandermonde(Tri(), 1, r_nodes, s_nodes) /
-                                   vertex_vandermonde)
-    node_to_plotting_interpolation = (StartUpDG.vandermonde(Tri(), rd.N, r_plot,
-                                                            s_plot) /
-                                      StartUpDG.vandermonde(Tri(), rd.N, r_nodes,
-                                                            s_nodes))
-    num_triangle_nodes = length(r_nodes)
+    # polynomial on the intersection polygon. Sampling it at the nodes of a degree `N` triangle
+    # and interpolating to the plotting nodes is therefore exact, and it keeps the number of
+    # `Tet()` basis evaluations proportional to `rd.Np` instead of to the number of plotting
+    # nodes. `rd_slice.V1` interpolates from the three triangle vertices to those nodes, and
+    # `rd_slice.Vp` from the nodes to the plotting nodes.
+    rd_slice = RefElemData(Tri(), rd.N; Nplot = rd.Nplot)
+    num_plotting_points = size(rd_slice.Vp, 1)
+    num_triangle_nodes = rd_slice.Np
+    triangle_vertex_interpolation = rd_slice.Vp * rd_slice.V1
 
     x_plot = zeros(RealT, num_plotting_points, num_slice_elements)
     y_plot = similar(x_plot)
@@ -965,15 +957,14 @@ function PlotData2D(u::StructArray,
             mul!(view(y_plot, :, slice_element), triangle_vertex_interpolation,
                  patch_coordinates(vertex_coordinates[orientation_y]))
             for dimension in 1:3
-                mul!(reference_coordinates[dimension], triangle_node_interpolation,
+                mul!(reference_coordinates[dimension], rd_slice.V1,
                      patch_coordinates(reference_vertex_coordinates[dimension]))
             end
 
             interpolation_matrix = StartUpDG.vandermonde(Tet(), rd.N,
                                                          reference_coordinates...) /
                                    vandermonde_factorization
-            mul!(plotting_interpolation, node_to_plotting_interpolation,
-                 interpolation_matrix)
+            mul!(plotting_interpolation, rd_slice.Vp, interpolation_matrix)
             StructArrays.foreachfield((output, input) -> mul!(output,
                                                               plotting_interpolation,
                                                               input),
@@ -1017,7 +1008,7 @@ function PlotData2D(u::StructArray,
         face_data[num_vertices + 1, polygon_id] = face_data[1, polygon_id]
     end
 
-    triangulation = reference_plotting_triangulation((r_plot, s_plot))
+    triangulation = reference_plotting_triangulation(rd_slice.rstp)
     variable_names = SVector(varnames(solution_variables_, equations))
 
     return PlotData2DTriangulated(x_plot, y_plot, u_plot, triangulation,
