@@ -840,6 +840,40 @@ end
     @trixi_test_nowarn Plots.plot(pd["rho"])
 end
 
+@testitem "Visualization: PlotData2D (DGMulti 3D stepped boundary)" tags=[:misc_part1] begin
+    using StartUpDG: uniform_mesh
+
+    dg = DGMulti(polydeg = 1, element_type = Tet())
+    equations = LinearScalarAdvectionEquation3D(1.0, 1.0, 1.0)
+    vertices, element_to_vertex = uniform_mesh(Tet(), 2, 2, 2)
+
+    for (slice, dimension) in ((:yz, 1), (:xz, 2), (:xy, 3))
+        # Remove an upper quadrant to expose a boundary face below the global maximum.
+        transverse_dimension = mod1(dimension + 1, 3)
+        keep = [!(sum(vertices[dimension][ids]) > 0 &&
+                  sum(vertices[transverse_dimension][ids]) > 0)
+                for ids in eachrow(element_to_vertex)]
+        mesh = DGMultiMesh(dg, vertices, element_to_vertex[keep, :])
+        u = fill(SVector(1.0), size(mesh.md.x))
+
+        for coordinate in (-1.0, 0.0, 0.25, 1.0)
+            point = ntuple(d -> d == dimension ? coordinate : 0.0, 3)
+            pd = PlotData2D(u, mesh, equations, dg, nothing; slice, point)
+
+            # Sum triangle areas to detect missing or duplicated parts of the slice.
+            area = sum(axes(pd.x, 2)) do element
+                sum(eachrow(pd.t)) do ids
+                    x = pd.x[ids, element]
+                    y = pd.y[ids, element]
+                    abs((x[2] - x[1]) * (y[3] - y[1]) -
+                        (x[3] - x[1]) * (y[2] - y[1])) / 2
+                end
+            end
+            @test area ≈ (coordinate <= 0 ? 4.0 : 2.0)
+        end
+    end
+end
+
 @testitem "Visualization: PlotData2D (DGMulti 3D unsupported)" setup=[
     Setup,
     Visualization

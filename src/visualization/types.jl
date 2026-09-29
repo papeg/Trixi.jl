@@ -872,8 +872,6 @@ function PlotData2D(u::StructArray,
         end
     end
 
-    # Use the same half-open convention as TreeMesh slicing. Thus, a plane coinciding with an
-    # interior face is owned by only one of its two neighboring tetrahedra.
     lower_limit, upper_limit = extrema(global_vertex_coordinates[slice_dimension])
     # Scale the tolerance with the coordinate magnitude so that it stays meaningful on domains
     # much larger or smaller than the unit cube.
@@ -891,12 +889,20 @@ function PlotData2D(u::StructArray,
     for element in eachelement(mesh, dg, cache)
         vertex_coordinates = element_vertex_coordinates(element)
         minimum_coordinate, maximum_coordinate = extrema(vertex_coordinates[slice_dimension])
+        # Assign shared faces to the tetrahedron on the positive side of the slice.
         intersects_half_open = (minimum_coordinate <= slice_coordinate + tolerance &&
                                 slice_coordinate < maximum_coordinate - tolerance)
         intersects_upper_boundary = (at_upper_boundary &&
                                      abs(maximum_coordinate - upper_limit) <= tolerance)
         if !intersects_half_open && !intersects_upper_boundary
-            continue
+            # Keep exposed boundary faces even below the domain's upper limit.
+            intersects_boundary_face = any(eachindex(rd.fv)) do face
+                global_face = (element - 1) * rd.num_faces + face
+                md.FToF[face, element] == global_face &&
+                    all(vertex -> abs(vertex_coordinates[slice_dimension][vertex] -
+                                      slice_coordinate) <= tolerance, rd.fv[face])
+            end
+            intersects_boundary_face || continue
         end
 
         polygon = intersect_tetrahedron_with_plane(vertex_coordinates, slice_dimension,
