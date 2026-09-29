@@ -676,7 +676,7 @@ end
 function slice_plotting_wireframe(u, intersection_polygons, rd, orientations,
                                   reference_vertex_coordinates, vandermonde_factorization,
                                   equations, solution_variables)
-    RealT = eltype(first(reference_vertex_coordinates))
+    RealT = real(rd)
     orientation_x, orientation_y = orientations
 
     # Sample edges at the surface resolution, omitting each edge's duplicated endpoint.
