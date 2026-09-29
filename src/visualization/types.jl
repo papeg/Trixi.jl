@@ -873,10 +873,7 @@ function PlotData2D(u::StructArray,
     end
 
     lower_limit, upper_limit = extrema(global_vertex_coordinates[slice_dimension])
-    # Scale the tolerance with the coordinate magnitude so that it stays meaningful on domains
-    # much larger or smaller than the unit cube.
-    scale = max(one(RealT), abs(slice_coordinate), abs(lower_limit), abs(upper_limit))
-    tolerance = 100 * eps(RealT) * scale
+    tolerance = slice_plane_tolerance(lower_limit, upper_limit, slice_coordinate)
     if slice_coordinate < lower_limit - tolerance ||
        slice_coordinate > upper_limit + tolerance
         error(string("Slice plane is outside of domain.",
@@ -885,14 +882,16 @@ function PlotData2D(u::StructArray,
 
     intersection_polygons = Tuple{Int, Vector{SVector{4, RealT}},
                                   NTuple{3, SVector{4, RealT}}}[]
-    at_upper_boundary = abs(slice_coordinate - upper_limit) <= tolerance
     for element in eachelement(mesh, dg, cache)
         vertex_coordinates = element_vertex_coordinates(element)
         minimum_coordinate, maximum_coordinate = extrema(vertex_coordinates[slice_dimension])
+        # Use the element size so distant vertices do not inflate the intersection tolerance.
+        tolerance = slice_plane_tolerance(minimum_coordinate, maximum_coordinate,
+                                          slice_coordinate)
         # Assign shared faces to the tetrahedron on the positive side of the slice.
-        intersects_half_open = (minimum_coordinate <= slice_coordinate + tolerance &&
-                                slice_coordinate < maximum_coordinate - tolerance)
-        intersects_upper_boundary = (at_upper_boundary &&
+        intersects_half_open = (minimum_coordinate - slice_coordinate <= tolerance &&
+                                maximum_coordinate - slice_coordinate > tolerance)
+        intersects_upper_boundary = (abs(slice_coordinate - upper_limit) <= tolerance &&
                                      abs(maximum_coordinate - upper_limit) <= tolerance)
         if !intersects_half_open && !intersects_upper_boundary
             # Keep exposed boundary faces even below the domain's upper limit.

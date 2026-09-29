@@ -716,6 +716,31 @@ end
     @test isempty(Trixi.intersect_tetrahedron_with_plane(edge_vertices, 3, 0.0))
 end
 
+@testitem "Visualization: tetrahedron-plane intersection scaling" tags=[:misc_part1] begin
+    for RealT in (Float32, Float64)
+        vertices = (SVector{4, RealT}(0, 1, 0, 0),
+                    SVector{4, RealT}(0, 0, 1, 0),
+                    SVector{4, RealT}(0, 0, 0, 1))
+        translated_scale = RealT == Float32 ? RealT(2.0^-7) : RealT(2.0^-26)
+        offset = RealT == Float32 ? RealT(2.0^10) : RealT(2.0^20)
+
+        for (scale, translation) in ((RealT(1.0e-14), zero(RealT)),
+                                    (one(RealT), zero(RealT)),
+                                    (RealT(1.0e14), zero(RealT)),
+                                    (translated_scale, offset)), dimension in 1:3
+            coordinates = ntuple(d -> scale * vertices[d] .+
+                                      (d == dimension ? translation : zero(RealT)), 3)
+            polygon = Trixi.intersect_tetrahedron_with_plane(coordinates, dimension,
+                                                             translation + scale / 4)
+            @test length(polygon) == 3
+            @test all(weights -> sum(weights .* vertices[dimension]) ≈ RealT(0.25),
+                      polygon)
+            @test isempty(Trixi.intersect_tetrahedron_with_plane(coordinates, dimension,
+                                                                 translation + 2 * scale))
+        end
+    end
+end
+
 @testitem "Visualization: PlotData2D (DGMulti 3D Tet slice)" setup=[
     Setup,
     Visualization
@@ -872,6 +897,56 @@ end
             @test area ≈ (coordinate <= 0 ? 4.0 : 2.0)
         end
     end
+end
+
+@testitem "Visualization: PlotData2D (DGMulti 3D slice scaling)" tags=[:misc_part1] begin
+    using StartUpDG: uniform_mesh
+
+    dg = DGMulti(polydeg = 1, element_type = Tet(), Nplot = 2)
+    equations = LinearScalarAdvectionEquation3D(1.0, 1.0, 1.0)
+    vertices, element_to_vertex = uniform_mesh(Tet(), 2, 2, 2)
+
+    for (scale, translation) in ((1.0e-14, 0.0), (1.0, 0.0), (1.0e14, 0.0),
+                                (2.0^-26, 2.0^20)),
+        (slice, dimension) in ((:yz, 1), (:xz, 2), (:xy, 3))
+
+        coordinates = ntuple(d -> scale .* vertices[d] .+
+                                  (d == dimension ? translation : 0.0), 3)
+        mesh = DGMultiMesh(dg, coordinates, element_to_vertex)
+        u = fill(SVector(1.0), size(mesh.md.x))
+
+        for coordinate in (-1.0, 0.0, 0.125, 1.0)
+            point = ntuple(d -> d == dimension ? translation + scale * coordinate : 0.0, 3)
+            pd = PlotData2D(u, mesh, equations, dg, nothing; slice, point)
+
+            # Normalize triangle areas to check coverage independently of the mesh scale.
+            area = sum(axes(pd.x, 2)) do element
+                sum(eachrow(pd.t)) do ids
+                    x = pd.x[ids, element] ./ scale
+                    y = pd.y[ids, element] ./ scale
+                    abs((x[2] - x[1]) * (y[3] - y[1]) -
+                        (x[3] - x[1]) * (y[2] - y[1])) / 2
+                end
+            end
+            @test area ≈ 4.0
+        end
+    end
+end
+
+@testitem "Visualization: PlotData2D (DGMulti 3D unused vertex)" tags=[:misc_part1] begin
+    dg = DGMulti(polydeg = 1, element_type = Tet(), Nplot = 2)
+    equations = LinearScalarAdvectionEquation3D(1.0, 1.0, 1.0)
+
+    # A distant unused vertex must not change how the unit tetrahedron is sliced.
+    coordinates = ([0.0, 1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0, 0.0],
+                   [0.0, 0.0, 0.0, 1.0, 1.0e14])
+    mesh = DGMultiMesh(dg, coordinates, [1 2 3 4])
+    u = fill(SVector(1.0), size(mesh.md.x))
+    pd = PlotData2D(u, mesh, equations, dg, nothing; point = (0.0, 0.0, 0.25))
+
+    @test size(pd.x, 2) == 1
+    @test maximum(pd.x) ≈ 0.75
+    @test maximum(pd.y) ≈ 0.75
 end
 
 @testitem "Visualization: PlotData2D (DGMulti 3D slice wireframe)" tags=[:misc_part1] begin

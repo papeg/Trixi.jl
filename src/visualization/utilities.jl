@@ -609,6 +609,13 @@ function cell2node(cell_centered_data)
     return node_centered_data
 end
 
+# Account for element size and rounding of translated coordinates.
+function slice_plane_tolerance(lower_limit, upper_limit, slice_coordinate)
+    extent = upper_limit - lower_limit
+    scale = max(abs(lower_limit), abs(upper_limit), abs(slice_coordinate))
+    return max(100 * eps(typeof(scale)) * extent, 2 * eps(scale))
+end
+
 # Intersect an affine tetrahedron with an axis-aligned plane. The vertex coordinates are stored
 # component-wise as `(x, y, z)`. Return the intersection polygon as cyclically ordered
 # barycentric coordinates with respect to the four tetrahedron vertices, or an empty vector if
@@ -622,8 +629,7 @@ function intersect_tetrahedron_with_plane(vertex_coordinates::NTuple{3,
     distances = plane_coordinates .- slice_coordinate_
 
     if tolerance === nothing
-        scale = max(one(RealT), abs(slice_coordinate_), maximum(abs, plane_coordinates))
-        tolerance_ = 100 * eps(RealT) * scale
+        tolerance_ = slice_plane_tolerance(extrema(plane_coordinates)..., slice_coordinate_)
     else
         tolerance_ = convert(RealT, tolerance)
     end
