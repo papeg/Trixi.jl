@@ -210,9 +210,10 @@ For two-dimensional `TreeMesh` data, `slice` and `point` are ignored.
 
 For three-dimensional [`DGMultiMesh`](@ref) solutions, slicing supports affine (straight-sided)
 tetrahedral elements and returns a `PlotData2DTriangulated` object. Curved meshes and other
-element shapes raise an error. Here, `nvisnodes` is ignored; set `Nplot` when constructing
-[`DGMulti`](@ref), e.g., `DGMulti(polydeg = 3, element_type = Tet(), Nplot = 15)`, to control
-the sampling resolution of the surface and its mesh lines.
+element shapes raise an error. Set `Nplot` when constructing [`DGMulti`](@ref), e.g.,
+`DGMulti(polydeg = 3, element_type = Tet(), Nplot = 15)`, to control surface sampling.
+As for 2D DGMulti plots, `nvisnodes` sets the number of points along each mesh edge
+(default: `2 * nnodes(dg)`); use `nvisnodes = 0` to omit mesh lines.
 
 # Examples
 ```julia
@@ -351,7 +352,8 @@ function PlotData2DTriangulated(sol::TrixiODESolution; kwargs...)
 end
 
 # If `u` is an `Array{<:SVectors}` and not a `StructArray`, convert it to a `StructArray` first.
-function PlotData2D(u::Array{<:SVector}, mesh, equations, dg::DGMulti, cache; kwargs...)
+function PlotData2D(u::Array{<:SVector}, mesh, equations, dg::DGMulti, cache;
+                    solution_variables = nothing, nvisnodes = 2 * nnodes(dg))
     nvars = length(first(u))
     u_structarray = StructArray{eltype(u)}(ntuple(_ -> zeros(eltype(first(u)), size(u)),
                                                   nvars))
@@ -360,7 +362,8 @@ function PlotData2D(u::Array{<:SVector}, mesh, equations, dg::DGMulti, cache; kw
     end
 
     # re-dispatch to PlotData2D with mesh, equations, dg, cache arguments
-    return PlotData2D(u_structarray, mesh, equations, dg, cache; kwargs...)
+    return PlotData2D(u_structarray, mesh, equations, dg, cache;
+                      solution_variables = solution_variables, nvisnodes = nvisnodes)
 end
 
 # constructor which returns an `PlotData2DTriangulated` object.
@@ -412,8 +415,12 @@ function PlotData2D(u::StructArray, mesh, equations, dg::DGMulti, cache;
 end
 
 # One can also call the `PlotData2DTriangulated` constructor directly for `DGMulti`
-function PlotData2DTriangulated(u, mesh, equations, dg::DGMulti, cache; kwargs...)
-    return PlotData2D(u, mesh, equations, dg, cache; kwargs...)
+function PlotData2DTriangulated(u, mesh, equations, dg::DGMulti, cache;
+                                solution_variables = nothing,
+                                nvisnodes = 2 * nnodes(dg))
+    return PlotData2D(u, mesh, equations, dg, cache;
+                      solution_variables = solution_variables,
+                      nvisnodes = nvisnodes)
 end
 
 # specializes the PlotData2D constructor to return an PlotData2DTriangulated for any type of mesh.
@@ -847,7 +854,7 @@ function PlotData2D(u::StructArray,
                     dg::DGMulti{3, Tet},
                     cache;
                     solution_variables = nothing,
-                    nvisnodes = nothing,
+                    nvisnodes = 2 * nnodes(dg),
                     slice = :xy,
                     point = (0.0, 0.0, 0.0))
     if slice !== :yz && slice !== :xz && slice !== :xy
@@ -920,13 +927,24 @@ function PlotData2D(u::StructArray,
                                                          (orientation_x, orientation_y),
                                                          reference_vertex_coordinates,
                                                          vandermonde_factorization,
-                                                         equations, solution_variables_)
+                                                         equations, solution_variables_;
+                                                         nvisnodes)
 
     triangulation = reference_plotting_triangulation(rd_slice.rstp)
     variable_names = SVector(varnames(solution_variables_, equations))
 
     return PlotData2DTriangulated(x_plot, y_plot, u_plot, triangulation,
                                   x_face, y_face, face_data, variable_names)
+end
+
+function PlotData2D(u::Array{<:SVector}, mesh::DGMultiMesh{3}, equations,
+                    dg::DGMulti{3}, cache; kwargs...)
+    return PlotData2D(StructArray(u), mesh, equations, dg, cache; kwargs...)
+end
+
+function PlotData2DTriangulated(u, mesh::DGMultiMesh{3}, equations,
+                                dg::DGMulti{3}, cache; kwargs...)
+    return PlotData2D(u, mesh, equations, dg, cache; kwargs...)
 end
 
 function PlotData2D(u::VectorOfArray, mesh::DGMultiMesh{3}, equations,

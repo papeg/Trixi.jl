@@ -675,19 +675,20 @@ end
 # Sample each polygon's mesh lines in physical coordinates and solution variables.
 function slice_plotting_wireframe(u, intersection_polygons, rd, orientations,
                                   reference_vertex_coordinates, vandermonde_factorization,
-                                  equations, solution_variables)
+                                  equations, solution_variables; nvisnodes)
     RealT = real(rd)
     orientation_x, orientation_y = orientations
 
-    # Sample edges at the surface resolution, omitting each edge's duplicated endpoint.
-    edge_fractions = (StartUpDG.equi_nodes(Line(), rd.Nplot)[1:(end - 1)] .+ 1) ./ 2
-    num_face_points = 4 * length(edge_fractions) + 1
+    # Sample each edge, omitting its duplicated endpoint.
+    edge_fractions = LinRange(0, 1, nvisnodes)[1:(end - 1)]
+    num_face_points = isempty(edge_fractions) ? 0 : 4 * length(edge_fractions) + 1
 
     # Store closed polylines and pad unused rows with NaN separators.
     x_face = fill(RealT(NaN), num_face_points, length(intersection_polygons))
     y_face = fill(RealT(NaN), size(x_face))
     face_data = similar(u, size(x_face))
     StructArrays.foreachfield(data -> fill!(data, NaN), face_data)
+    isempty(edge_fractions) && return x_face, y_face, face_data
     for (polygon_id, (element, polygon, vertex_coordinates)) in enumerate(intersection_polygons)
         wireframe = [(1 - fraction) * polygon[vertex] +
                      fraction * polygon[mod1(vertex + 1, length(polygon))]

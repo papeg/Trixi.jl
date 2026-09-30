@@ -267,10 +267,11 @@ which results in a 2x3 grid of slices of the `yz`-plane:
 The same `slice` and `point` keyword arguments slice three-dimensional
 [`DGMultiMesh`](@ref) solutions on affine (straight-sided) tetrahedral elements.
 Curved meshes and non-tetrahedral elements are not supported by this method and raise an error.
-For this method, `nvisnodes` is accepted for interface compatibility but has no effect.
 Set `Nplot` when constructing [`DGMulti`](@ref), for example
-`DGMulti(polydeg = 3, element_type = Tet(), Nplot = 15)`, to control the sampling
-resolution of both the surface and its mesh lines.
+`DGMulti(polydeg = 3, element_type = Tet(), Nplot = 15)`, to control surface sampling.
+As in 2D DGMulti plots, `nvisnodes` controls the number of points along each mesh edge
+and defaults to `2 * nnodes(dg)`. For example, use `PlotData2D(sol; nvisnodes = 12)`
+to sample each edge at 12 points, or `nvisnodes = 0` to omit mesh lines.
 
 For example,
 ```julia

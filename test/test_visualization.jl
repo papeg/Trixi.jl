@@ -691,7 +691,8 @@ end
                         cells_per_dimension=(2, 2, 2), tspan=(0.0, 0.0),
                         initial_condition=initial_condition_linear, source_terms=nothing)
 
-    kwargs = (; slice = :xz, point = (0.0, 0.125, 0.0), solution_variables = cons2cons)
+    kwargs = (; slice = :xz, point = (0.0, 0.125, 0.0), solution_variables = cons2cons,
+              nvisnodes = 12)
     pd = @inferred PlotData2D(sol; kwargs...)
     @test pd isa Trixi.PlotData2DTriangulated
     @test size(pd.t, 1) > 0
@@ -703,7 +704,12 @@ end
             @test plot_data.x ≈ pd.x
             @test plot_data.y ≈ pd.y
             @test plot_data.data ≈ pd.data
+            @test size(plot_data.x_face) == size(pd.x_face)
         end
+
+        pd_without_mesh = PlotData2D(sol; kwargs..., nvisnodes = 0)
+        @test isempty(pd_without_mesh.x_face)
+        @test pd_without_mesh.data ≈ pd.data
 
         @trixi_test_nowarn Plots.plot(pd["rho"])
         @trixi_test_nowarn Plots.plot!(getmesh(pd))
@@ -758,12 +764,18 @@ end
 
                 # Mesh lines sample the same polynomial at the requested resolution.
                 finite = isfinite.(pd_slice.x_face)
-                @test count(finite) == num_edges * dg.basis.Nplot + 1
+                @test count(finite) == num_edges * (2 * nnodes(dg) - 1) + 1
                 expected_face = solution_variables.(state.(pd_slice.x_face[finite],
                                                            pd_slice.y_face[finite],
                                                            coordinate),
                                                     Ref(equations))
                 @test pd_slice.face_data[finite] ≈ expected_face
+
+                pd_custom = PlotData2D(u, mesh, equations, dg, nothing;
+                                       point = (0.0, 0.0, coordinate), solution_variables,
+                                       nvisnodes = 12)
+                @test count(isfinite, pd_custom.x_face) == num_edges * 11 + 1
+                @test pd_custom.data ≈ pd_slice.data
             end
         end
     end
@@ -775,7 +787,8 @@ end
                     [0.0, 0.0, 1.0, 0.0, 0.0])
         mesh = DGMultiMesh(dg, vertices, [1 2 4 3; 1 5 2 3])
         u = [SVector(value) for _ in axes(mesh.md.x, 1), value in (1.0, 3.0)]
-        pd_slice = PlotData2D(u, mesh, equations, dg, nothing; point = (0.0, 0.0, 0.25))
+        pd_slice = PlotData2D(u, mesh, equations, dg, nothing;
+                              point = (0.0, 0.0, 0.25), nvisnodes = 3)
 
         # Both traces remain distinct at the shared edge of the slice.
         shared = findall(i -> isapprox(pd_slice.x_face[i], 0.0; atol = 1.0e-12) &&
